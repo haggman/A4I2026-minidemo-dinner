@@ -155,9 +155,13 @@ BASE = ("You are Dinner Scout, a friendly local guide, speaking out loud. The us
         "Every fact about a place must come from your tools. Call note_preferences whenever you learn a preference. ")
 DELEGATE = "When you need places, call the scout. When a question needs the web (is it a chain, is it loud), call the vetter. "
 SPEAK_FIRST = ("IMPORTANT: before you call the scout or the vetter, first SAY one short sentence out loud, such as "
-               "\"Sure, let me send my scout to look.\" Only then make the call. Never call them in silence. ")
+               "\"Sure, let me send my scout to look.\" Only then make the call. Never call them in silence. "
+               "While the scout is working, fill the time with general conversation: ask what they feel like "
+               "eating, or mention one thing about the neighbourhood. Don't describe places until the scout reports. ")
 OWN_SEARCH = "When you need places, call the scout. When a question needs the web (is it a chain, is it loud), use Google Search yourself. "
-NUDGE = "(Your scout is searching now. While you wait, say one short friendly line to the user. Don't call any tools.)"
+NUDGE = ("(Your scout is searching now. While it works, keep the user company: one short line of general "
+         "conversation, such as a question about what they feel like eating or one thing about the neighbourhood. "
+         "Don't call any tools, and don't describe places yet.)")
 
 
 async def live_try(label: str, instruction: str, text: str, *, own_search=False, nudge=False, waits_for="scout",
