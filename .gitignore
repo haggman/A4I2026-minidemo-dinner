@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Keys - never commit these
+keys.env
+.env
+*.json.key
+service-account*.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Probe output (diagnostic JSON and the recorded voice replies)
+probe/out/
