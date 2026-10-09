@@ -437,7 +437,7 @@ async def synth_interruption() -> tuple[bytes, str]:
     """A synthesized voice saying the interruption line, as 16 kHz PCM. Empty if TTS is unavailable."""
     try:
         r = await models.text_client().aio.models.generate_content(
-            model=config.TTS_MODEL, contents="Say briskly and clearly: Actually, hang on. No chains, please.",
+            model=config.TTS_MODEL, contents="Actually, hang on. No chains, please.",
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],
                 speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(
@@ -567,7 +567,9 @@ async def p5_team_live() -> None:
                 "Tell me about each of the places your scout found, one by one, in some detail."))]))
             got_audio = await wait_until(lambda: any(t > t3 for t in MARKS.get("audio", [])), 30)
             await asyncio.sleep(0.8)
-            completed_before = any(t > t3 for t in MARKS.get("turn_complete", []))
+            first_a3 = next((t for t in MARKS.get("audio", []) if t > t3), None)
+            now3 = time.perf_counter() - CLOCK["t0"]
+            completed_before = first_a3 is not None and any(first_a3 < t <= now3 for t in MARKS.get("turn_complete", []))
             ti = time.perf_counter() - CLOCK["t0"]
             if speech:
                 mark("speaking", f"{len(speech) / 32000:.1f}s of synthesized speech")

@@ -9,8 +9,8 @@ long it took; the rest print Google's error. If a Gemini API key is in keys.env,
 Then set A4I_VERTEX_LOCATION in demo.env to a location that said OK and run the full probe again.
 
 Why: Google's locations table lists gemini-3.8-live under the multi-regions ("us", "eu", served from
-aiplatform.us.rep.googleapis.com and aiplatform.eu.rep.googleapis.com) as well as single regions, and the first
-probe found it missing in us-central1.
+aiplatform.us.rep.googleapis.com and aiplatform.eu.rep.googleapis.com) as well as single regions. In a lab project
+on 2026-10-09, "us" and "us-central1" answered and "global" said "not found".
 """
 import asyncio
 import sys
