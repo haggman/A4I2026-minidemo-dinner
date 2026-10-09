@@ -35,7 +35,7 @@ TEXT_MODEL = _get("A4I_TEXT_MODEL", "gemini-3.8-flash")
 TTS_MODEL = _get("A4I_TTS_MODEL", "gemini-3.8-flash-tts")
 VOICE = _get("A4I_VOICE", "Kore")
 BACKEND = _get("A4I_BACKEND", "vertex").lower()
-VERTEX_LOCATION = _get("A4I_VERTEX_LOCATION", "us-central1")          # the Live model
+VERTEX_LOCATION = _get("A4I_VERTEX_LOCATION", "us")                   # the Live model (multi-region)
 VERTEX_TEXT_LOCATION = _get("A4I_VERTEX_TEXT_LOCATION", "global")    # the specialists
 
 GEMINI_API_KEY = _get("GOOGLE_API_KEY")

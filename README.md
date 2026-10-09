@@ -34,6 +34,9 @@ finishes, copy everything between the two `DINNER SCOUT PROBE` lines and paste i
 spoken reply in `probe/out/` as a `.wav`; to hear one, right-click it in the Cloud Shell Editor's file list and
 choose **Download**.
 
+The Live model is served from the Vertex multi-region `us` (set in `demo.env`); a single region such as
+`us-central1` answers "not found". `python probe/where_is_live.py` asks every location at once.
+
 **If Vertex won't serve the Live model** (P2 fails with "not found or your project does not have access"), the
 fallback is a Gemini API key: in Google AI Studio click **Get API key**, then **Create API key** in the same
 project, put it in `keys.env` as `GOOGLE_API_KEY`, set `A4I_BACKEND=gemini-api` in `demo.env`, and run the probe

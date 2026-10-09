@@ -615,7 +615,7 @@ async def p6_backends() -> None:
     if config.PROJECT:
         tries += [(f"vertex {config.VERTEX_LOCATION}", dict(vertexai=True, project=config.PROJECT,
                                                          location=config.VERTEX_LOCATION)),
-                  ("vertex us (multi-region)", dict(vertexai=True, project=config.PROJECT, location="us")),
+                  ("vertex us-central1", dict(vertexai=True, project=config.PROJECT, location="us-central1")),
                   ("vertex global", dict(vertexai=True, project=config.PROJECT, location="global"))]
     else:
         rec("SKIP", "P6 vertex", "no Google Cloud project (gcloud config set project ..., then source activate.sh)")
