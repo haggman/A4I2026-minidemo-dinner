@@ -39,6 +39,10 @@ fallback is a Gemini API key: in Google AI Studio click **Get API key**, then **
 project, put it in `keys.env` as `GOOGLE_API_KEY`, set `A4I_BACKEND=gemini-api` in `demo.env`, and run the probe
 again. P6 already tells you whether that route works, if a key is present.
 
+**In a short-lived lab project** (a Skills project, say), bring a Places key from your own project instead:
+`cp keys.env.example keys.env`, put the key in as `MAPS_SERVER_KEY`, then run the same commands; the script sees
+the key and only switches on Vertex AI. The key bills to your project wherever it is used.
+
 **No script?** The console route for the Places key: **Google Maps Platform > APIs & Services**, enable
 **Places API (New)**; then **Google Maps Platform > Keys & Credentials > Create credentials > API key**, restrict
 it to Places API (New), and put it in `keys.env` as `MAPS_SERVER_KEY` (`cp keys.env.example keys.env` first).

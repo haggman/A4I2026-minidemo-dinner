@@ -15,6 +15,17 @@ if [[ -z "${project}" || "${project}" == "(unset)" ]]; then
 fi
 echo "Project: ${project}"
 
+# Already have a Places key (say, from your own project, while this is a short-lived lab project)? Put it in
+# keys.env as MAPS_SERVER_KEY first: then this only switches on Vertex AI here. A key is billed to the project
+# that owns it, wherever it is used from, so Places doesn't need enabling in this project.
+existing="$(grep -E '^MAPS_SERVER_KEY=.+' keys.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+if [[ -n "${existing}" ]]; then
+  echo "keys.env already has a MAPS_SERVER_KEY; using it. Enabling Vertex AI only..."
+  gcloud services enable aiplatform.googleapis.com
+  echo "Next: source scripts/activate.sh && python probe/probe.py"
+  exit 0
+fi
+
 echo "Enabling Vertex AI, Places API (New) and API Keys (a minute the first time)..."
 gcloud services enable aiplatform.googleapis.com places.googleapis.com apikeys.googleapis.com
 
