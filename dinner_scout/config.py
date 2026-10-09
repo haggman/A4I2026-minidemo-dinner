@@ -34,8 +34,9 @@ LIVE_MODEL = _get("A4I_LIVE_MODEL", "gemini-3.8-live")
 TEXT_MODEL = _get("A4I_TEXT_MODEL", "gemini-3.8-flash")
 TTS_MODEL = _get("A4I_TTS_MODEL", "gemini-3.8-flash-tts")
 VOICE = _get("A4I_VOICE", "Kore")
-BACKEND = _get("A4I_BACKEND", "gemini-api").lower()
-VERTEX_LOCATION = _get("A4I_VERTEX_LOCATION", "us-central1")
+BACKEND = _get("A4I_BACKEND", "vertex").lower()
+VERTEX_LOCATION = _get("A4I_VERTEX_LOCATION", "us-central1")          # the Live model
+VERTEX_TEXT_LOCATION = _get("A4I_VERTEX_TEXT_LOCATION", "global")    # the specialists
 
 GEMINI_API_KEY = _get("GOOGLE_API_KEY")
 MAPS_SERVER_KEY = _get("MAPS_SERVER_KEY")
@@ -65,8 +66,9 @@ def summary() -> list[str]:
         return "set" if v else "MISSING"
     return [
         f"live model {LIVE_MODEL} · specialists {TEXT_MODEL} · voice {VOICE} · backend {BACKEND}"
-        + (f" ({VERTEX_LOCATION})" if BACKEND == "vertex" else ""),
-        f"keys: GOOGLE_API_KEY {setting(GEMINI_API_KEY)} · MAPS_SERVER_KEY {setting(MAPS_SERVER_KEY)} · "
+        + (f" (live {VERTEX_LOCATION}, text {VERTEX_TEXT_LOCATION}, project {PROJECT or 'NOT SET'})"
+           if BACKEND == "vertex" else ""),
+        f"keys: GOOGLE_API_KEY {setting(GEMINI_API_KEY)}{' (not needed on vertex)' if BACKEND == 'vertex' else ''} · MAPS_SERVER_KEY {setting(MAPS_SERVER_KEY)} · "
         f"MAPS_BROWSER_KEY {setting(MAPS_BROWSER_KEY)} · project {PROJECT or '(none)'}",
         "landmarks: " + " · ".join(f"{c}: {l}" for c, l in LANDMARKS.items()) + f" · opens on {DEFAULT_CITY}",
     ]

@@ -2,22 +2,24 @@
 
     source scripts/activate.sh
     python probe/probe.py                 # everything (about 3-4 minutes)
-    python probe/probe.py --only places   # one check: env, places, live, mixed, team, specialists, vertex
+    python probe/probe.py --only places   # one check: env, places, live, mixed, specialists, team, backends
 
 At the end it prints a DIAGNOSTIC block to paste back, writes the full results to probe/out/probe-<time>.json,
 and saves each spoken reply as a .wav in probe/out/ so you can hear the voice.
 
 What it settles (numbered as in the output):
   P1  Places API (New): the landmark, then dinner around it, and which fields actually come back filled in.
-  P2  Gemini Live on the Gemini API, no ADK: connect time, time to first audio, how fast audio is generated.
+  P2  Gemini Live, no ADK, on the backend in demo.env (Vertex by default, no key): connect time, time to first
+      audio, how fast audio is generated.
   P3  Google Search and our own function tool in ONE Live session: allowed or rejected?
   P4  The specialists alone (ADK, text model): the Scout with our Places tool, the Vetter with Google Search.
   P5  The team, live (ADK run_live): Concierge on the Live model, Scout and Vetter as AgentTools.
       Does the specialist run? Does the voice keep talking while it works? Then a SPOKEN interruption
       (a synthesized voice says "no chains") to see the interrupted flag, the transcription and the recovery.
-  P6  Vertex AI: can this project open a Live session on the Live model, regionally and globally?
+  P6  Which backends will serve the Live model to us: Vertex regional, Vertex global, the Gemini API (if a key).
 
-Patrick runs this (it needs keys); Claude cannot reach Gemini or Maps from its sandbox.
+Patrick runs this, in Cloud Shell by default (Gemini on Vertex, no key; a Places key in keys.env); Claude cannot
+reach Gemini or Maps from its sandbox.
 """
 import argparse
 import array
@@ -33,7 +35,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from dinner_scout import config, places  # noqa: E402  (config reads demo.env and keys.env)
+from dinner_scout import config, models, places  # noqa: E402  (config reads demo.env and keys.env)
 
 import httpx  # noqa: E402
 from google import genai  # noqa: E402
@@ -98,8 +100,10 @@ def resample_16k(pcm: bytes, rate: int) -> bytes:
     return out.tobytes()
 
 
-def api_client() -> genai.Client:
-    return genai.Client(api_key=config.GEMINI_API_KEY)
+def where() -> str:
+    if config.BACKEND == "vertex":
+        return f"Vertex AI ({config.PROJECT}, {config.VERTEX_LOCATION})"
+    return "the Gemini API (key)"
 
 
 def local_time_text(utc_offset_min) -> str:
@@ -119,10 +123,11 @@ def p0_env() -> None:
         " · ".join(f"{k} {v}" for k, v in ver.items()), versions=ver)
     for line in config.summary():
         rec("INFO", "P0 config", line)
-    if not config.GEMINI_API_KEY:
-        rec("FAIL", "P0 keys", "GOOGLE_API_KEY is empty: put a Gemini API key in keys.env (see keys.env.example)")
+    ok, why = models.ready()
+    if not ok:
+        rec("FAIL", "P0 gemini", why)
     if not config.MAPS_SERVER_KEY:
-        rec("FAIL", "P0 keys", "MAPS_SERVER_KEY is empty: put a Places API (New) key in keys.env")
+        rec("FAIL", "P0 keys", "MAPS_SERVER_KEY is empty: run `bash scripts/make_places_key.sh` (or see the README)")
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -184,10 +189,11 @@ async def p1_places(city: str) -> None:
 # P2  Gemini Live, raw (no ADK): connect, first audio, generation speed
 # ---------------------------------------------------------------------------------------------------------------
 async def p2_live_raw() -> None:
-    if not config.GEMINI_API_KEY:
-        rec("SKIP", "P2 live raw", "no GOOGLE_API_KEY")
+    ok, why = models.ready()
+    if not ok:
+        rec("SKIP", "P2 live raw", why)
         return
-    client = api_client()
+    client = models.live_client()
     cfg = types.LiveConnectConfig(
         response_modalities=["AUDIO"],
         speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(
@@ -221,13 +227,13 @@ async def p2_live_raw() -> None:
             await asyncio.wait_for(drain(), timeout=45)
             gen = time.perf_counter() - t_sent
     except Exception as e:
-        rec("FAIL", "P2 live raw", f"{config.LIVE_MODEL} on the Gemini API: {type(e).__name__}: {str(e)[:300]}")
+        rec("FAIL", "P2 live raw", f"{config.LIVE_MODEL} on {where()}: {type(e).__name__}: {str(e)[:300]}")
         return
     rate = rate_of(mime, 24000)
     audio_s = len(pcm) / 2 / rate
     wav = save_wav("p2-hello", bytes(pcm), rate) if pcm else None
     rec("PASS" if pcm else "FAIL", "P2 live raw",
-        f"connect {secs(t_conn)}, first audio {secs(first_audio)}, {audio_s:.1f}s of audio generated in "
+        f"{where()}: connect {secs(t_conn)}, first audio {secs(first_audio)}, {audio_s:.1f}s of audio generated in "
         f"{secs(gen)} ({audio_s / gen if gen else 0:.1f}x real time), mime {mime!r}; said: {''.join(said)[:160]!r}"
         + (f"; saved {wav}" if wav else ""),
         connect_s=t_conn, first_audio_s=first_audio, audio_s=audio_s, wall_s=gen, mime=mime)
@@ -237,8 +243,9 @@ async def p2_live_raw() -> None:
 # P3  Google Search + our own function tool in one Live session
 # ---------------------------------------------------------------------------------------------------------------
 async def p3_mixed_tools() -> None:
-    if not config.GEMINI_API_KEY:
-        rec("SKIP", "P3 search+function", "no GOOGLE_API_KEY")
+    ok, why = models.ready()
+    if not ok:
+        rec("SKIP", "P3 search+function", why)
         return
     note = types.FunctionDeclaration(
         name="note_preferences", description="Record what the user wants for dinner.",
@@ -251,7 +258,7 @@ async def p3_mixed_tools() -> None:
                            "Use Google Search for facts about restaurants. Keep answers to one sentence.")
     calls, grounded, said = [], False, []
     try:
-        async with api_client().aio.live.connect(model=config.LIVE_MODEL, config=cfg) as session:
+        async with models.live_client().aio.live.connect(model=config.LIVE_MODEL, config=cfg) as session:
             await session.send_realtime_input(
                 text="I'm in Toronto and I want Thai food. Is Pai Northern Thai Kitchen a chain? Search to check.")
             async def drain():
@@ -331,7 +338,7 @@ def build_agents():
 
     sb, sa = cb("scout")
     scout = Agent(
-        name="scout", model=config.TEXT_MODEL,
+        name="scout", model=models.text_model(),
         description="Finds restaurants near the user. Give it what the user wants in plain words.",
         instruction="You find dinner options. Call search_places once (twice at most), then reply with a compact "
                     "JSON list of the best three to five: name, kind, rating, price, walk_minutes_about, open_now, "
@@ -339,7 +346,7 @@ def build_agents():
         tools=[search_places], before_agent_callback=sb, after_agent_callback=sa)
     vb, va = cb("vetter")
     vetter = Agent(
-        name="vetter", model=config.TEXT_MODEL,
+        name="vetter", model=models.text_model(),
         description="Checks facts the map can't: is a place a chain, is it loud, what is it known for.",
         instruction="Answer the question about the named restaurant in two sentences, using Google Search.",
         tools=[google_search], before_agent_callback=vb, after_agent_callback=va)
@@ -367,7 +374,7 @@ def build_agents():
     vetter_tool.response_scheduling = types.FunctionResponseScheduling.WHEN_IDLE
 
     concierge = Agent(
-        name="concierge", model=config.LIVE_MODEL,
+        name="concierge", model=models.live_model(),
         instruction=(
             f"You are Dinner Scout, a friendly local guide, speaking out loud. The user is near {lm['name']}; "
             f"local time there is {local_time_text(lm.get('utc_offset_min'))}. Speak one or two short sentences "
@@ -407,8 +414,8 @@ async def run_text_agent(agent, text: str, timeout: float = 60) -> tuple[str, fl
 
 
 async def p4_specialists() -> None:
-    if not (config.GEMINI_API_KEY and config.MAPS_SERVER_KEY):
-        rec("SKIP", "P4 specialists", "needs both keys")
+    if not (models.ready()[0] and config.MAPS_SERVER_KEY):
+        rec("SKIP", "P4 specialists", models.ready()[1] or "no MAPS_SERVER_KEY")
         return
     _, scout, vetter = build_agents()
     for name, agent, q in [
@@ -429,7 +436,7 @@ async def p4_specialists() -> None:
 async def synth_interruption() -> tuple[bytes, str]:
     """A synthesized voice saying the interruption line, as 16 kHz PCM. Empty if TTS is unavailable."""
     try:
-        r = await api_client().aio.models.generate_content(
+        r = await models.text_client().aio.models.generate_content(
             model=config.TTS_MODEL, contents="Say briskly and clearly: Actually, hang on. No chains, please.",
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],
@@ -442,8 +449,8 @@ async def synth_interruption() -> tuple[bytes, str]:
 
 
 async def p5_team_live() -> None:
-    if not (config.GEMINI_API_KEY and config.MAPS_SERVER_KEY):
-        rec("SKIP", "P5 team live", "needs both keys")
+    if not (models.ready()[0] and config.MAPS_SERVER_KEY):
+        rec("SKIP", "P5 team live", models.ready()[1] or "no MAPS_SERVER_KEY")
         return
     from google.adk.agents.live_request_queue import LiveRequestQueue
     from google.adk.agents.run_config import RunConfig
@@ -601,15 +608,23 @@ async def p5_team_live() -> None:
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# P6  Vertex AI
+# P6  the Live model on each backend: which ones will serve it to us?
 # ---------------------------------------------------------------------------------------------------------------
-async def p6_vertex() -> None:
-    if not config.PROJECT:
+async def p6_backends() -> None:
+    tries = []
+    if config.PROJECT:
+        tries += [(f"vertex {config.VERTEX_LOCATION}", dict(vertexai=True, project=config.PROJECT,
+                                                         location=config.VERTEX_LOCATION)),
+                  ("vertex global", dict(vertexai=True, project=config.PROJECT, location="global"))]
+    else:
         rec("SKIP", "P6 vertex", "no Google Cloud project (gcloud config set project ..., then source activate.sh)")
-        return
-    for loc in [config.VERTEX_LOCATION, "global"]:
+    if config.GEMINI_API_KEY:
+        tries.append(("gemini-api", dict(vertexai=False, api_key=config.GEMINI_API_KEY)))
+    else:
+        rec("SKIP", "P6 gemini-api", "no GOOGLE_API_KEY (optional: only needed if Vertex won't serve the Live model)")
+    for label, kw in tries:
         try:
-            client = genai.Client(vertexai=True, project=config.PROJECT, location=loc)
+            client = genai.Client(**kw)
             t = time.perf_counter()
             async with client.aio.live.connect(model=config.LIVE_MODEL,
                                                config=types.LiveConnectConfig(response_modalities=["AUDIO"])) as s:
@@ -619,14 +634,13 @@ async def p6_vertex() -> None:
                         if msg.server_content and msg.server_content.model_turn:
                             return
                 await asyncio.wait_for(first(), timeout=30)
-            rec("PASS", f"P6 vertex {loc}", f"{config.LIVE_MODEL} answered in {secs(time.perf_counter() - t)} "
-                f"(project {config.PROJECT})")
+            rec("PASS", f"P6 {label}", f"{config.LIVE_MODEL} answered in {secs(time.perf_counter() - t)}")
         except Exception as e:
-            rec("WARN", f"P6 vertex {loc}", f"{type(e).__name__}: {str(e)[:260]}")
+            rec("WARN", f"P6 {label}", f"{type(e).__name__}: {str(e)[:260]}")
 
 
 # ---------------------------------------------------------------------------------------------------------------
-CHECKS = ["env", "places", "live", "mixed", "specialists", "team", "vertex"]
+CHECKS = ["env", "places", "live", "mixed", "specialists", "team", "backends"]
 
 
 async def main() -> int:
@@ -639,7 +653,7 @@ async def main() -> int:
     print(f"Dinner Scout probe {STAMP} — about 3-4 minutes. Each line is PASS, WARN, FAIL, INFO or SKIP.\n")
     steps = [("env", None), ("places", lambda: p1_places(a.city)), ("live", p2_live_raw),
              ("mixed", p3_mixed_tools), ("specialists", p4_specialists), ("team", p5_team_live),
-             ("vertex", p6_vertex)]
+             ("backends", p6_backends)]
     p0_env()
     if "team" in run or "specialists" in run:
         run.add("places")                 # the agents need the landmark
