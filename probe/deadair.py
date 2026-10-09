@@ -1,4 +1,4 @@
-"""Dead air: how long is the voice silent while a specialist works, and what shortens it? (About 3 minutes.)
+"""Dead air: how long is the voice silent while a specialist works, and what shortens it? (About 4 minutes.)
 
     source scripts/activate.sh
     python probe/deadair.py
@@ -12,7 +12,9 @@ This tries the fixes, each in a fresh live session, and prints one line per try:
   L1     the team as in the first probe, but with the faster specialists
   L2     + the Concierge told to say a sentence BEFORE it calls the Scout
   L3     + our server nudges it ("say one short line while the scout works") the moment it calls the Scout
-  L4     no Vetter: the Concierge answers "is it a chain, is it loud?" with its own Google Search
+  L4     the Vetter (a) versus the Concierge answering "is it a chain, is it loud?" with its own Google Search (b)
+  L5     the Scout with Google Search beside its Places tool, asked for "no chains" up front (S5: the same, alone)
+  L6     a general question ("I'm near Times Square, what's around?") answered by the Concierge's own Search
 For each: seconds until the first word, whether it spoke while the specialist worked, and the LONGEST SILENCE
 between sending and hearing the results. That last number is the one that matters on stage.
 """
@@ -51,7 +53,7 @@ async def locate() -> None:
         LANDMARK.update(await places.find_landmark(c, config.MAPS_SERVER_KEY, config.LANDMARKS[config.DEFAULT_CITY]))
 
 
-def make_specialists(level: str, marks: dict, terse: bool):
+def make_specialists(level: str, marks: dict, terse: bool, scout_search: bool = False):
     from google.adk.agents import Agent
     from google.adk.tools import google_search
 
@@ -88,11 +90,14 @@ def make_specialists(level: str, marks: dict, terse: bool):
               "Reply with a compact JSON list of the best three to five: name, kind, rating, price, "
               "walk_minutes_about, open_now, wheelchair_entrance.")
     sb, sa = cb("scout")
+    extra = (" If the user wants no chains, use Google Search once to check which of the places are chains "
+             "(more than a few locations under one brand) and drop those." if scout_search else "")
     scout = Agent(name="scout", model=models.text_model(),
                   description="Finds restaurants near the user. Give it what the user wants in plain words.",
-                  instruction="You find dinner options. Call search_places once, then answer. " + answer +
-                              " Facts only from the tool.",
-                  tools=[search_places], generate_content_config=thinking(level),
+                  instruction="You find dinner options. Call search_places once, then answer." + extra + " " +
+                              answer + " Facts only from your tools.",
+                  tools=[search_places] + ([google_search] if scout_search else []),
+                  generate_content_config=thinking(level),
                   before_agent_callback=sb, after_agent_callback=sa)
     vb, va = cb("vetter")
     vetter = Agent(name="vetter", model=models.text_model(),
@@ -130,6 +135,12 @@ async def specialists_alone() -> None:
             out(f"[INFO] {label}: {s:.2f}s · {txt[:140]!r}")
         except Exception as e:
             out(f"[FAIL] {label}: {type(e).__name__}: {str(e)[:200]}")
+    scout, _ = make_specialists("MINIMAL", {}, True, scout_search=True)
+    try:
+        s, txt = await asyncio.wait_for(run_text(scout, "Dinner within a 15-minute walk, no chains, somewhere we can talk."), 60)
+        out(f"[INFO] S5 scout + Google Search, MINIMAL, no chains: {s:.2f}s · {txt[:160]!r}")
+    except Exception as e:
+        out(f"[FAIL] S5 scout + Google Search: {type(e).__name__}: {str(e)[:200]}")
     for label, level in [("S3 vetter, default thinking", ""), ("S4 vetter, MINIMAL", "MINIMAL")]:
         _, vetter = make_specialists(level, {}, True)
         try:
@@ -149,7 +160,8 @@ OWN_SEARCH = "When you need places, call the scout. When a question needs the we
 NUDGE = "(Your scout is searching now. While you wait, say one short friendly line to the user. Don't call any tools.)"
 
 
-async def live_try(label: str, instruction: str, text: str, *, own_search=False, nudge=False, waits_for="scout") -> None:
+async def live_try(label: str, instruction: str, text: str, *, own_search=False, nudge=False, waits_for="scout",
+                   scout_search=False) -> None:
     from google.adk.agents import Agent
     from google.adk.agents.live_request_queue import LiveRequestQueue
     from google.adk.agents.run_config import RunConfig
@@ -159,7 +171,7 @@ async def live_try(label: str, instruction: str, text: str, *, own_search=False,
     from google.adk.tools.function_tool import FunctionTool
 
     marks: dict = {}
-    scout, vetter = make_specialists("MINIMAL", marks, True)
+    scout, vetter = make_specialists("MINIMAL", marks, True, scout_search=scout_search)
 
     def note_preferences(city: str = "", cuisine: str = "", walk_minutes: int = 0, budget: str = "",
                          avoid: str = "", must_have: str = "") -> dict:
@@ -219,7 +231,9 @@ async def live_try(label: str, instruction: str, text: str, *, own_search=False,
                     said.append(ev.output_transcription.text)
                     tl.append((rel(now), "said: " + ev.output_transcription.text[:80]))
                 if ev.grounding_metadata:
-                    tl.append((rel(now), "search grounding"))
+                    sep = ev.grounding_metadata.search_entry_point
+                    has = bool(sep and sep.rendered_content)
+                    tl.append((rel(now), "search grounding" + (" WITH suggestions chip" if has else " (no suggestions chip)")))
                 if ev.turn_complete:
                     completes.append(now)
                     tl.append((rel(now), "turn_complete"))
@@ -279,7 +293,7 @@ async def main() -> int:
         print(why or "MAPS_SERVER_KEY is empty")
         return 1
     print(f"Dead-air probe · live {config.LIVE_MODEL} ({config.BACKEND} {config.VERTEX_LOCATION}) · "
-          f"specialists {config.TEXT_MODEL} · about 3 minutes\n")
+          f"specialists {config.TEXT_MODEL} · about 4 minutes\n")
     t = time.perf_counter()
     await locate()
     await specialists_alone()
@@ -291,6 +305,12 @@ async def main() -> int:
     await live_try("L3 + server nudge", BASE + DELEGATE, ask, nudge=True)
     await live_try("L4a vetter, minimal", BASE + SPEAK_FIRST + DELEGATE, vet, waits_for="vetter")
     await live_try("L4b own Google Search", BASE + OWN_SEARCH, vet, own_search=True, waits_for="speech")
+    await live_try("L5 scout with Search, no chains", BASE + SPEAK_FIRST + OWN_SEARCH,
+                   "I'm in Toronto, it's dinner time. Somewhere within fifteen minutes' walk, no chains, "
+                   "quiet enough to talk.", own_search=True, scout_search=True)
+    await live_try("L6 general question, own Search", BASE + OWN_SEARCH,
+                   "I'm near Times Square in New York tonight. What's around here, what should I know?",
+                   own_search=True, waits_for="speech")
 
     print("\n" + "=" * 26 + " DEAD AIR — paste from here " + "=" * 26)
     print(f"deadair · {time.perf_counter() - t:.0f}s · live {config.VERTEX_LOCATION}")
