@@ -16,26 +16,28 @@ if [[ -z "${project}" || "${project}" == "(unset)" ]]; then
 fi
 echo "Project: ${project}"
 
-# Already have a Places key (say, from your own project, while this is a short-lived lab project)? Put it in
-# keys.env as MAPS_SERVER_KEY first: then this only switches on Vertex AI here. A key is billed to the project
-# that owns it, wherever it is used from, so Places doesn't need enabling in this project.
+find_key() {
+  gcloud services api-keys list --filter='displayName=dinner-scout-places' --format='value(name)' 2>/dev/null | head -1 || true
+}
+
+# Already have a Places key from ANOTHER project (this one being a short-lived lab project, say)? Put it in keys.env
+# as MAPS_SERVER_KEY first: then this only switches on Vertex AI here. A key is billed to the project that owns it,
+# wherever it is used from, so Places and Routes don't need enabling in this project. (A key this script made in
+# THIS project is recognised by its name and simply updated below.)
 existing="$(grep -E '^MAPS_SERVER_KEY=.+' keys.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
-if [[ -n "${existing}" ]]; then
-  echo "keys.env already has a MAPS_SERVER_KEY; using it. Enabling Vertex AI only..."
+if [[ -n "${existing}" && -z "$(find_key)" ]]; then
+  echo "keys.env already has a MAPS_SERVER_KEY from another project; using it. Enabling Vertex AI only..."
   gcloud services enable aiplatform.googleapis.com
   echo "For real travel times, that key's own project needs the Routes API too. In that project's Cloud Shell, run"
   echo "this same script once (it adds Routes to the key), or turn A4I_ROUTES off in demo.env. Without it the"
   echo "Scout quietly uses straight-line estimates."
-  echo "Next: source scripts/activate.sh && python probe/probe.py"
+  echo "Next: source scripts/activate.sh && bash scripts/run.sh"
   exit 0
 fi
 
 echo "Enabling Vertex AI, Places API (New), Routes API and API Keys (a minute the first time)..."
 gcloud services enable aiplatform.googleapis.com places.googleapis.com routes.googleapis.com apikeys.googleapis.com
 
-find_key() {
-  gcloud services api-keys list --filter='displayName=dinner-scout-places' --format='value(name)' | head -1
-}
 name="$(find_key)"
 if [[ -z "${name}" ]]; then
   echo "Creating the key dinner-scout-places (restricted to Places API (New) and the Routes API)..."
@@ -69,4 +71,4 @@ if not done:
 p.write_text("\n".join(lines) + "\n")
 PY
 echo "Wrote MAPS_SERVER_KEY to keys.env (git ignores that file). New keys can take a minute or two to work."
-echo "Next: source scripts/activate.sh && python probe/probe.py"
+echo "Next: source scripts/activate.sh && bash scripts/run.sh"
