@@ -266,4 +266,5 @@ def show_route(tool_context: ToolContext, place: str, travel_mode: str = "") -> 
              "qr_svg": maps_links.qr_svg(url), "travel_mode": travel_mode,
              "minutes_about": c.get("minutes_about"), "minutes_from": c.get("minutes_from"),
              "maps_uri": c.get("maps_uri")})
-    return {"ok": True, "name": c["name"], "travel_mode": travel_mode, "minutes_about": c.get("minutes_about")}
+    return {"ok": True, "name": c["name"], "travel_mode": travel_mode, "minutes_about": c.get("minutes_about"),
+            "on_screen": "a QR code that opens these directions in Google Maps on a phone (no route is drawn)"}

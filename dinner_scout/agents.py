@@ -65,15 +65,17 @@ def build_scout() -> Agent:
 
 
 def build_navigator() -> Agent:
-    before, after = _lights("navigator", "Making directions", "Sent to the screen")
+    before, after = _lights("navigator", "Making the QR code", "QR code on screen")
     return Agent(
         name="navigator",
         model=models.text_model(),
-        description="Puts directions to the place the user chose on the screen, as a QR code that opens Google "
+        description="Puts a QR code on the screen that opens directions to the chosen place in Google "
                     "Maps on their phone. Give it the place's name.",
         instruction=(
             "Call show_route once with the place's name. Use the travel mode the user chose (walking or driving); "
-            "if they didn't say, leave travel_mode empty. Then reply in one short sentence saying it is on the screen."),
+            "if they didn't say, leave travel_mode empty. Then reply in one short sentence: the QR code is on the "
+            "screen, and scanning it opens the directions in Google Maps. The screen shows the QR code, not the "
+            "directions themselves."),
         tools=[tools.show_route],
         generate_content_config=SPECIALIST_THINKING,
         before_agent_callback=before,
@@ -103,7 +105,8 @@ Your tools:
 - google_search: for what a map can't tell you (is it a chain, is it loud, what is it known for) and for general
   questions about the area. A chain means a brand with more than a handful of locations.
 - navigator: when they've chosen (or ask you to choose), recommend ONE place, then call the navigator with its
-  name and tell them to scan the code on the screen to open it in Google Maps on their phone.
+  name and tell them to scan the QR code on the screen: it opens the directions in Google Maps on their phone.
+  The screen shows the QR code, not the route itself, so never say the directions are on the screen.
 
 Hand-offs: before you call the scout or the navigator, first SAY one short sentence, like "Let me send my scout to
 look." While the scout works, keep them company: ask what they feel like eating, or mention one thing about the
