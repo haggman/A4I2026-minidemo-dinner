@@ -122,6 +122,7 @@ button, input, select { font: inherit; color: inherit; }
 .card { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   padding: 10px; animation: pop .35s ease-out both; }
 .card.chosen { border-color: var(--nav); box-shadow: 0 0 0 2px var(--nav) inset; }
+.card.said:not(.chosen) { border-color: var(--scout); box-shadow: 0 0 0 2px var(--scout) inset; }
 .pick .card .ph { width: 140px; height: 104px; }
 .pick .card { grid-template-columns: 140px minmax(0, 1fr); }
 .card .ph { width: 112px; height: 88px; border-radius: 8px; background: var(--panel-2); overflow: hidden; position: relative; }
@@ -148,6 +149,7 @@ button, input, select { font: inherit; color: inherit; }
 .toast { position: fixed; right: 16px; bottom: 16px; max-width: 420px; background: #3a1712; border: 1px solid var(--bad); color: #ffd6cf; padding: 10px 14px; border-radius: 10px; z-index: 9; }
 .pin { background: var(--scout); color: #032019; font: 800 14px var(--display); width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
   border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.pin.said { transform: scale(1.3); box-shadow: 0 0 0 4px var(--scout), 0 2px 10px rgba(0,0,0,.5); }
 .pin.chosen { background: var(--nav); color: #170838; transform: scale(1.35); }
 .pin.here { background: var(--lamp); color: #231400; width: 18px; height: 18px; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -193,7 +195,7 @@ button, input, select { font: inherit; color: inherit; }
 "use strict";
 const $ = (id) => document.getElementById(id);
 const S = { ws: null, cfg: null, mode: "auto", inCtx: null, outCtx: null, outGain: null, outAnalyser: null, inAnalyser: null,
-  playing: [], nextTime: 0, holding: false, places: {}, order: [], markers: {}, here: null, map: null, gm: null,
+  playing: [], nextTime: 0, holding: false, places: {}, order: [], said: new Set(), markers: {}, here: null, map: null, gm: null,
   cap: { user: null, agent: null } };
 
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 6000); }
@@ -262,7 +264,7 @@ function redrawPins() {
   const b = new google.maps.LatLngBounds(); if (S.here) b.extend({ lat: S.here.lat, lng: S.here.lng });
   if (S.line) S.line.getPath().forEach(pt => b.extend(pt));
   S.order.forEach((id, i) => { const p = S.places[id]; if (!p.lat || !ids.includes(id)) return;
-    S.markers[id] = new S.gm.AdvancedMarkerElement({ map: S.map, position: { lat: p.lat, lng: p.lng }, content: pinEl(String(i + 1), id === S.chosen ? "chosen" : ""), title: p.name });
+    S.markers[id] = new S.gm.AdvancedMarkerElement({ map: S.map, position: { lat: p.lat, lng: p.lng }, content: pinEl(String(i + 1), id === S.chosen ? "chosen" : S.said.has(id) ? "said" : ""), title: p.name });
     b.extend({ lat: p.lat, lng: p.lng }); });
   if (S.order.length) S.map.fitBounds(b, { top: 90, bottom: 60, left: 60, right: 60 });
 }
@@ -304,14 +306,14 @@ function handle(m) {
     case "error": toast(m.message); break;
   }
 }
-const PREF_LABELS = { near: "near", city: "city", cuisine: "food", travel: "going", max_minutes: "up to", budget: "budget", avoid: "avoid", must_have: "must", party: "who" };
+const PREF_LABELS = { when: "when", near: "near", city: "city", cuisine: "food", travel: "going", max_minutes: "up to", budget: "budget", avoid: "avoid", must_have: "must", party: "who" };
 const TRAVEL_WORD = { walking: "on foot", driving: "by car", transit: "by transit" };
 function renderPrefs(p) {
   $("chips").innerHTML = Object.entries(p).filter(([k]) => k !== "near" && k !== "city")
     .map(([k, v]) => `<span class="chip"><i>${esc(PREF_LABELS[k] || k)}</i>${esc(k === "max_minutes" ? v + " min" : k === "travel" ? (TRAVEL_WORD[v] || v) : v)}</span>`).join(" ");
 }
 function renderPlaces(list) {
-  S.places = {}; S.order = []; S.chosen = null; S.showAll = false; drawLine("");
+  S.places = {}; S.order = []; S.said = new Set(); S.chosen = null; S.showAll = false; drawLine("");
   list.forEach(p => { S.places[p.place_id] = p; S.order.push(p.place_id); });
   renderList();
   redrawPins();
@@ -327,7 +329,7 @@ function renderCard(id) {
   const p = S.places[id], d = $("c-" + id); if (!p || !d) return;
   const i = S.order.indexOf(id) + 1;
   const attr = (p.attr || []).map(a => a.uri ? `<a href="${esc(a.uri)}" target="_blank" rel="noopener">${esc(a.name)}</a>` : esc(a.name)).join(", ");
-  d.className = "card" + (id === S.chosen ? " chosen" : "");
+  d.className = "card" + (id === S.chosen ? " chosen" : "") + (S.said.has(id) ? " said" : "");
   d.innerHTML = `<div class="ph">${p.photo ? `<img src="${esc(p.photo)}" alt="" onerror="this.remove()">` : ""}<span class="num">${i}</span></div>
     <div style="min-width:0"><h4>${esc(p.name)}</h4>
       <div class="meta">${p.rating ? `<b>${p.rating}★</b> (${(p.ratings || 0).toLocaleString()}) · ` : ""}${p.price ? esc(p.price) + " · " : ""}${p.minutes_from === "routes" ? "" : "about "}<b>${p.minutes_about} min</b> ${p.travel === "driving" ? "drive" : "walk"}${p.kind ? " · " + esc(p.kind) : ""}</div>
@@ -376,6 +378,26 @@ function caption(who, text, final) {
   if (final) { el.textContent = text; S.cap[who] = null; }
   else { el.dataset.t = (el.dataset.t || "") + text; el.textContent = el.dataset.t; }
   while (box.children.length > 3) box.removeChild(box.firstChild);
+  if (who === "agent") spotlight(el.textContent);
+}
+// The cards and pins the voice names light up, so what she says and what's on screen visibly match.
+const NUM_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
+function norm(s) { return " " + String(s || "").toLowerCase().replace(/[+&]/g, " and ").replace(/[’'`]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim() + " "; }
+function nameKeys(name) {
+  const main = String(name || "").split(/\s[-–|:(]|,/)[0].replace(/^the\s+/i, "");
+  return [norm(name), norm(main)].filter(k => k.trim().length >= 4);
+}
+function spotlight(text) {
+  if (!S.order.length) return;
+  const t = norm(text); let first = null;
+  for (const m of t.matchAll(/ (?:number|no) (\d|one|two|three|four|five|six) /g)) {
+    const id = S.order[(+m[1] || NUM_WORDS[m[1]]) - 1]; if (id && !S.said.has(id)) { S.said.add(id); first = first || id; } }
+  S.order.forEach(id => { const p = S.places[id]; if (!p || S.said.has(id)) return;
+    if (nameKeys(p.name).some(k => t.includes(k))) { S.said.add(id); first = first || id; } });
+  if (!first) return;
+  S.order.forEach(id => { const d = $("c-" + id); if (d && !d.classList.contains("chosen")) d.classList.toggle("said", S.said.has(id));
+    const mk = S.markers[id]; if (mk && mk.content && !mk.content.classList.contains("chosen")) mk.content.classList.toggle("said", S.said.has(id)); });
+  if (!S.chosen || S.showAll) { const d = $("c-" + first); if (d) d.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
 }
 
 // ---------------------------------------------------------------- audio

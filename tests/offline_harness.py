@@ -114,6 +114,7 @@ places.nearest_place = fake_nearest_place
 
 # ---- Flash stand-in (the Scout and the Navigator) ------------------------------------------------------------
 SPECIALIST_CALLS: list[str] = []
+SCOUT_SAW: list[dict] = []          # what search_places handed back to the Scout
 
 
 async def fake_generate(self, llm_request, stream=False):
@@ -126,10 +127,14 @@ async def fake_generate(self, llm_request, stream=False):
         asked = " ".join(p.text or "" for c in llm_request.contents for p in (c.parts or []) if c.role == "user")
         args = ({"query": "dinner", "travel": "driving", "max_minutes": 10} if "driv" in asked
                 else {"query": "dinner", "max_minutes": 15})
+        if "open now" in asked:
+            args["open_now"] = True
+        if answered:
+            SCOUT_SAW.append(dict(last.parts[0].function_response.response or {}))
         if not answered:
             part = types.Part(function_call=types.FunctionCall(id="s1", name="search_places", args=args))
         else:
-            part = types.Part(text="Edna + Vita | Italian | 4.8 | $$ | about 6 min walk | open now yes | wheelchair entrance yes")
+            part = types.Part(text="#1 Edna + Vita | Italian | 4.8 | $$ | 7 min walk | open now yes | wheelchair entrance yes")
     else:
         SPECIALIST_CALLS.append("navigator:" + ("answer" if answered else "call"))
         part = (types.Part(text="Directions to Edna + Vita are on the screen.") if answered else
@@ -142,6 +147,7 @@ Gemini.generate_content_async = fake_generate
 
 # ---- Gemini Live stand-in (the Concierge) --------------------------------------------------------------------
 LIVE_HEARD: list[str] = []
+NOTE_REPLIES: list[dict] = []
 CALL_IDS = iter(range(1000))
 
 
@@ -178,7 +184,11 @@ class FakeLive(BaseLlmConnection):
             name = p.function_response.name
             LIVE_HEARD.append("response:" + name)
             if name == "note_preferences":
-                if self.next_note == "first":      # speak first, then hand off
+                NOTE_REPLIES.append(dict(p.function_response.response or {}))
+                if self.next_note == "later":
+                    self.push(audio("Toronto next week, lovely. Let me send my scout."),
+                              call("scout", request="dinner, open now"), DONE)
+                elif self.next_note == "first":      # speak first, then hand off
                     self.push(audio("Let me send my scout to look."), call("scout", request="dinner within 15 minutes"), DONE)
                 elif self.next_note == "drive":
                     self.push(audio("Sure, I'll look a little further out."),
@@ -211,6 +221,9 @@ class FakeLive(BaseLlmConnection):
             self.push(call("scout", request="dinner, silently"), DONE)          # hands off without a word
         elif text.startswith("(Your scout is searching now"):
             self.push(audio("What are you in the mood for?"), DONE)
+        elif "next week" in text:
+            self.next_note = "later"
+            self.push(call("note_preferences", city="Toronto", when="next week"), DONE)
         elif "Times Square" in text:
             self.next_note = "times"
             self.push(call("note_preferences", near="Times Square", city="New York"), DONE)
@@ -282,6 +295,10 @@ async def main() -> int:
         si = INSTRUCTIONS[0] if INSTRUCTIONS else ""
         check("the voice's instructions say where we are and not to ask",
               "Metro Toronto Convention Centre" in si and "Do NOT ask where they are" in si, si[si.find("Where they are"):][:160])
+        check("the first question is 'around here or somewhere else?', then walk or drive",
+              0 < si.find("around here, or somewhere else") < si.find("walk or drive"))
+        check("the voice names only the scout's places, top cards first",
+              "Name ONLY places from the scout's latest report" in si and "Start with #1 and #2" in si)
         loc = of("location")[0] if of("location") else {}
         check("map starts at the browser's location, named by the nearest place",
               loc.get("name") == "Metro Toronto Convention Centre" and loc.get("lat") == VENUE["lat"], str(loc)[:120])
@@ -319,6 +336,12 @@ async def main() -> int:
         check("latency readout", bool(of("latency")), str(of("latency")[:1]))
         check("the scout used its tool and answered", SPECIALIST_CALLS[:2] == ["scout:call", "scout:answer"],
               str(SPECIALIST_CALLS))
+        saw = SCOUT_SAW[0] if SCOUT_SAW else {}
+        check("the scout gets the places numbered in card order, and is told so",
+              [r.get("n") for r in saw.get("places", [])] == list(range(1, len(names) + 1))
+              and [r.get("name") for r in saw.get("places", [])] == names and "in this order" in saw.get("on_screen", ""),
+              str([(r.get("n"), r.get("name")) for r in saw.get("places", [])]))
+        check("the cards carry the same numbers", bool(cards) and [p.get("n") for p in cards[-1]["places"]] == list(range(1, len(names) + 1)))
 
         # Walk -> drive: the Scout looks further out and the times become driving times.
         n_places = len(of("places"))
@@ -382,10 +405,34 @@ async def main() -> int:
         ok = await until(lambda: any(e.get("name") == "Times Square" for e in of("location")))
         check("moving city re-centres the map", ok, str(LOOKED_UP))
         check("the city is looked up as the user said it", any("Times Square" in t for t in LOOKED_UP))
+
+        # Planning ahead: "I'll be in Toronto next week". The map moves back; open-now doesn't apply.
+        n_places = len(of("places"))
+        await ws.send(json.dumps({"type": "text", "text": "I'll be in Toronto next week, somewhere good."}))
+        ok = await until(lambda: len(of("places")) > n_places)
+        check("another city, another day: the map moves and the scout searches there",
+              ok and of("location")[-1]["name"] == "Union Station", str(of("location")[-1:])[:120])
+        check("for next week, the search ignores 'open now'", ok and not SEARCHES[-1].get("open_now"), str(SEARCHES[-1]))
+        nr = NOTE_REPLIES[-1] if NOTE_REPLIES else {}
+        check("note_preferences tells the voice it's for later, without the time there now",
+              nr.get("planning_for") == "next week" and "local_time" not in nr, str(nr)[:160])
+        check("the preferences strip shows when", of("prefs")[-1]["prefs"].get("when") == "next week")
         check("no error events", not of("error"), str(of("error")[:2]))
 
         await ws.send(json.dumps({"type": "stop"}))
         rd.cancel()
+
+    # The navigator finds the pick by card number or by name, preferring what's on screen now.
+    from dinner_scout import stage as stages, tools
+    st = stages.Stage()
+    old = {"place_id": "old-1", "name": "Edna + Vita", "n": 1}
+    st.places = {"old-1": old, "a": {"place_id": "a", "name": "Pai Northern Thai Kitchen", "n": 1},
+                 "b": {"place_id": "b", "name": "The Frederick", "n": 2}, "c": {"place_id": "c", "name": "Edna + Vita Union", "n": 3}}
+    st.on_screen = ["a", "b", "c"]
+    got = {q: (tools._find(st, q) or {}).get("place_id") for q in ("#2", "number two", "3", "first one", "frederick", "edna + vita union", "Pai")}
+    check("the navigator finds the pick by number or name",
+          got == {"#2": "b", "number two": "b", "3": "c", "first one": "a", "frederick": "b", "edna + vita union": "c", "Pai": "a"}, str(got))
+    st.close()
 
     # No location from the browser (refused or slow): the page starts on the default city's landmark.
     async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws", max_size=None) as ws2:

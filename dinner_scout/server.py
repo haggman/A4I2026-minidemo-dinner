@@ -201,6 +201,7 @@ async def upstream(ws: WebSocket, lrq: LiveRequestQueue, st: stages.Stage, turn:
         m = json.loads(msg["text"])
         kind = m.get("type")
         if kind == "text" and m.get("text", "").strip():
+            print(f"[dinner-scout] user (typed): {m['text'].strip()[:300]}", flush=True)
             st.emit({"type": "transcript", "who": "user", "text": m["text"].strip(), "final": True, "typed": True})
             turn.user_finished()
             lrq.send_content(types.Content(role="user", parts=[types.Part(text=m["text"].strip())]))
@@ -241,11 +242,15 @@ async def downstream(r: Runner, session_id: str, lrq: LiveRequestQueue, st: stag
             if ev.input_transcription and ev.input_transcription.text:
                 st.emit({"type": "transcript", "who": "user", "text": ev.input_transcription.text,
                          "final": not ev.partial})
-                if not ev.partial and mode == "auto":
-                    turn.user_finished()
+                if not ev.partial:
+                    print(f"[dinner-scout] user: {ev.input_transcription.text.strip()[:300]}", flush=True)
+                    if mode == "auto":
+                        turn.user_finished()
             if ev.output_transcription and ev.output_transcription.text:
                 st.emit({"type": "transcript", "who": "agent", "text": ev.output_transcription.text,
                          "final": not ev.partial})
+                if not ev.partial:
+                    print(f"[dinner-scout] concierge: {ev.output_transcription.text.strip()[:300]}", flush=True)
             gm = ev.grounding_metadata
             if gm and gm.grounding_chunks:
                 st.emit({"type": "sources", "queries": list(gm.web_search_queries or []),

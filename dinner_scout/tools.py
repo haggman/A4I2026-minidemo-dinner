@@ -12,6 +12,7 @@ import asyncio
 import datetime as dt
 import difflib
 import logging
+import re
 from typing import Optional
 
 import httpx
@@ -28,7 +29,7 @@ CITY_ALIASES = {
     "new york city": "New York", "nyc": "New York", "manhattan": "New York",
 }
 SKIP_STATUS = {"CLOSED_PERMANENTLY", "CLOSED_TEMPORARILY"}
-TERSE = ("name", "kind", "rating", "price", "minutes_about", "minutes_from", "travel", "open_now", "wheelchair_entrance",
+TERSE = ("n", "name", "kind", "rating", "price", "minutes_about", "minutes_from", "travel", "open_now", "wheelchair_entrance",
          "wheelchair_restroom", "wheelchair_seating", "vegetarian", "good_for_groups", "summary")
 
 
@@ -36,6 +37,14 @@ def local_time(utc_offset_min: Optional[int]) -> str:
     if utc_offset_min is None:
         return "unknown"
     return (dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=utc_offset_min)).strftime("%A %H:%M")
+
+
+NOW_WORDS = {"", "now", "right now", "tonight", "today", "this evening", "soon", "in a bit", "shortly"}
+
+
+def is_later(when: str) -> bool:
+    """Is dinner for another day ("next Tuesday", "next week"), rather than now or tonight?"""
+    return (when or "").strip().lower() not in NOW_WORDS
 
 
 def city_key(city: str) -> str:
@@ -105,13 +114,14 @@ def travel_of(text: str) -> str:
 
 async def note_preferences(tool_context: ToolContext, near: str = "", city: str = "", cuisine: str = "",
                            travel: str = "", max_minutes: int = 0, budget: str = "", avoid: str = "",
-                           must_have: str = "", party: str = "") -> dict:
+                           must_have: str = "", party: str = "", when: str = "") -> dict:
     """Record what the user has told you, as soon as you learn it, including where they are.
 
     Args:
-      near: where they are right now, in their words: a landmark, an area or an address ("Times Square",
-        "the convention centre"). The map moves there and the scout searches around it.
-      city: the city they are in.
+      near: where they'll eat, in their words, if it isn't right here: a landmark, an area, a hotel or an address
+        ("Times Square", "the Royal York"). The map moves there and the scout searches around it.
+      city: the city they'll eat in, if it isn't this one ("Toronto"). The map moves there.
+      when: when they'll eat, in their words: "tonight", "now", "next Tuesday", "next week".
       cuisine: food they want, or "anything".
       travel: how they'll get there: "walking" or "driving".
       max_minutes: how long they're willing to walk or drive, in minutes.
@@ -124,7 +134,8 @@ async def note_preferences(tool_context: ToolContext, near: str = "", city: str 
     if st is None:
         return {"noted": False, "error": "no page is connected"}
     given = {"near": near, "city": city, "cuisine": cuisine, "travel": travel_of(travel) if travel else "",
-             "max_minutes": max_minutes, "budget": budget, "avoid": avoid, "must_have": must_have, "party": party}
+             "max_minutes": max_minutes, "budget": budget, "avoid": avoid, "must_have": must_have, "party": party,
+             "when": when}
     given = {k: v for k, v in given.items() if v}
     result: dict = {"noted": True}
     new_near = bool(near) and near != st.prefs.get("near")
@@ -134,6 +145,8 @@ async def note_preferences(tool_context: ToolContext, near: str = "", city: str 
     if new_city and not new_near and st.landmark is not None and await _same_city(st, city):
         st.city = city                                # "I'm in Toronto" when the browser already put us there
         new_city = False
+    if new_city and not new_near:
+        st.prefs.pop("near", None)                    # a new city with no spot named: the old spot was elsewhere
     if new_near or new_city or st.landmark is None:
         try:
             lm = await locate(st, near=st.prefs.get("near", ""), city=st.prefs.get("city", ""))
@@ -141,6 +154,11 @@ async def note_preferences(tool_context: ToolContext, near: str = "", city: str 
         except Exception as e:                       # the conversation carries on; the map stays where it was
             log.warning("locate failed: %s", e)
             result["location_problem"] = "Couldn't find that place on the map; ask them for a nearby landmark."
+    if is_later(st.prefs.get("when", "")):
+        result.pop("local_time", None)
+        result["planning_for"] = st.prefs["when"]
+        result["note"] = ("This is for later, not now: don't limit the search to places open now, and don't talk "
+                          "about what time it is there.")
     return result
 
 
@@ -175,6 +193,8 @@ async def search_places(tool_context: ToolContext, query: str, travel: str = "",
     st = stages.of(tool_context.state)
     if st is None:
         return {"places": [], "error": "no page is connected"}
+    if is_later(st.prefs.get("when", "")):
+        open_now = False                            # "next week": what's open right now doesn't matter
     if st.landmark is None:
         await locate(st, city=st.prefs.get("city", ""))
     lm = st.landmark
@@ -197,8 +217,12 @@ async def search_places(tool_context: ToolContext, query: str, travel: str = "",
     if wheelchair:
         cards = [c for c in cards if c.get("wheelchair_entrance") is True]
     cards = cards[:6]
-    for c in cards:
+    for i, c in enumerate(cards, 1):
+        c["n"] = i                                   # the number on the card and on the pin
         st.places[c["place_id"]] = c
+    st.on_screen = [c["place_id"] for c in cards]
+    print(f"[dinner-scout] on screen for {query!r} ({how}): " + (" · ".join(f"{c['n']} {c['name']}" for c in cards)
+                                                                  or "nothing"), flush=True)
     st.emit({"type": "places", "query": query, "places": cards,
              "center": {"lat": lm["lat"], "lng": lm["lng"], "name": lm["name"]}})
     st.agent("scout", "working", f"{len(cards)} places within about {limit} minutes' {how}")
@@ -208,7 +232,9 @@ async def search_places(tool_context: ToolContext, query: str, travel: str = "",
     if not rows:
         return {"places": [], "note": f"Nothing matched within about {limit} minutes' {how}. Try a broader "
                                       f"query or a longer {how}."}
-    return {"places": rows}
+    return {"places": rows,
+            "on_screen": f"These are cards 1 to {len(rows)} on the screen and the numbered pins on the map, in this "
+                         f"order (n is the number). Any earlier results are no longer on screen."}
 
 
 async def _real_times(st: stages.Stage, lm: dict, cards: list[dict], mode: str) -> None:
@@ -232,18 +258,31 @@ async def _real_times(st: stages.Stage, lm: dict, cards: list[dict], mode: str) 
                 c["walk_minutes_about"] = m
 
 
+NUMBER_WORDS = {"one": 1, "first": 1, "two": 2, "second": 2, "three": 3, "third": 3, "four": 4, "fourth": 4,
+                "five": 5, "fifth": 5, "six": 6, "sixth": 6}
+NUMBERED = re.compile(r"\s*(?:#|no\.?|number|card|pin)?\s*(\d|one|two|three|four|five|six|first|second|third|fourth|"
+                      r"fifth|sixth)\s*(?:one|place|card|pin)?\s*")
+
+
 def _find(st: stages.Stage, place: str) -> Optional[dict]:
+    """The card the voice means: by place ID, by its number on screen ("#4", "number four"), or by name (loosely),
+    preferring what's on screen now over earlier searches."""
     if place in st.places:
         return st.places[place]
-    names = {c["name"].lower(): c for c in st.places.values() if c.get("name")}
     p = (place or "").strip().lower()
-    if p in names:
-        return names[p]
-    for n, c in names.items():
-        if p and (p in n or n in p):
-            return c
-    close = difflib.get_close_matches(p, list(names), n=1, cutoff=0.6)
-    return names[close[0]] if close else None
+    m = NUMBERED.fullmatch(p)
+    if m:
+        n = int(m.group(1)) if m.group(1).isdigit() else NUMBER_WORDS[m.group(1)]
+        if 1 <= n <= len(st.on_screen):
+            return st.places[st.on_screen[n - 1]]
+    pool = [st.places[i] for i in st.on_screen] + [c for c in st.places.values() if c["place_id"] not in st.on_screen]
+    pool = [c for c in pool if c.get("name")]
+    for test in (lambda n: n == p, lambda n: bool(p) and (p in n or n in p)):
+        for c in pool:
+            if test(c["name"].lower()):
+                return c
+    close = difflib.get_close_matches(p, [c["name"].lower() for c in pool], n=1, cutoff=0.6)
+    return next((c for c in pool if close and c["name"].lower() == close[0]), None)
 
 
 async def show_route(tool_context: ToolContext, place: str, travel_mode: str = "") -> dict:

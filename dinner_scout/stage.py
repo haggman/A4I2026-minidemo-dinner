@@ -23,6 +23,7 @@ class Stage:
         self.city: str = ""
         self.prefs: dict[str, Any] = {}
         self.places: dict[str, dict] = {}           # place_id -> compact row + display fields (this session only)
+        self.on_screen: list[str] = []              # place_ids of the latest search, in card order
         self.chosen: Optional[str] = None
         _REGISTRY[self.id] = self
 

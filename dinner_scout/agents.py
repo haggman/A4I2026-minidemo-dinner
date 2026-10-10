@@ -43,6 +43,18 @@ def _lights(name: str, working: str, done: str):
     return before, after
 
 
+def _log_reply(name: str):
+    """Print what a specialist tells the Concierge, to the server console: compare it with the cards on screen
+    (the "on screen for ..." line) and with what the voice says (the "concierge:" lines)."""
+    def after_model(callback_context, llm_response):
+        parts = llm_response.content.parts if llm_response.content and llm_response.content.parts else []
+        text = " ".join(p.text for p in parts if p.text and not getattr(p, "thought", False)).strip()
+        if text:
+            print(f"[dinner-scout] {name} reported: " + text.replace("\n", " / ")[:700], flush=True)
+        return None
+    return after_model
+
+
 def build_scout() -> Agent:
     before, after = _lights("scout", "Looking for places", "Done")
     return Agent(
@@ -53,12 +65,15 @@ def build_scout() -> Agent:
         instruction=(
             "You find dinner options with the search_places tool. Call it once (twice at most, if the first search "
             "finds nothing). Pass the user's limits through: travel (walking or driving), max_minutes, max_price, "
-            "open_now, wheelchair. Then reply with one line per place, best first, at most five, and nothing else: "
-            "name | kind | rating | price | N min walk (or drive; say \"about\" when minutes_from is estimate) | "
-            "open now yes/no | wheelchair entrance "
-            "yes/no/unknown | one short note from the summary. Every fact comes from the tool."),
+            "open_now, wheelchair. Only your LAST search is on the screen, so report only its places. Reply with "
+            "one line per place, in exactly the order the tool returned them (don't re-rank; the screen shows them "
+            "in that order), starting with the card number, and nothing else: "
+            "#n name | kind | rating | price | N min walk (or drive; say \"about\" when minutes_from is estimate) | "
+            "open now yes/no | wheelchair entrance yes/no/unknown | one short note from the summary. "
+            "Every fact comes from the tool."),
         tools=[tools.search_places],
         generate_content_config=SPECIALIST_THINKING,
+        after_model_callback=_log_reply("scout"),
         before_agent_callback=before,
         after_agent_callback=after,
     )
@@ -78,6 +93,7 @@ def build_navigator() -> Agent:
             "Google Maps)."),
         tools=[tools.show_route],
         generate_content_config=SPECIALIST_THINKING,
+        after_model_callback=_log_reply("navigator"),
         before_agent_callback=before,
         after_agent_callback=after,
     )
@@ -86,12 +102,19 @@ def build_navigator() -> Agent:
 PERSONA = """You are Dinner Scout, a friendly local guide, speaking out loud to someone at a Google developer event.
 They speak first. Hold a real conversation that narrows dinner down to one place.
 
-Early on (your first or second question, unless they've already said), ask whether they'd rather walk or
-drive, and how far they're happy to go. Walking searches close by; driving searches further out.
+Your first question (unless they've already said): is dinner around here, or somewhere else? They might be
+planning ahead ("I'll be in Toronto next week"). If it's somewhere else, call note_preferences with "near" and/or
+"city", and "when" if it's not tonight, so the map and the scout move there. A city alone is fine: the search
+starts from its centre, and they can name a hotel or a landmark to narrow it.
+Then (your next question, unless they've already said) ask whether they'd rather walk or drive, and how far
+they're happy to go. Walking searches close by; driving searches further out.
 
 How you talk:
 - One or two short sentences at a time. Ask at most one question at a time.
 - Never read out more than three places. Never read addresses, links or IDs aloud: say it's on the screen.
+- The places you name must be the ones on the screen. Name ONLY places from the scout's latest report, never
+  from Google Search or memory. Start with #1 and #2 (the top cards and pins) unless the user asked for something
+  that fits another one better; then say its number ("number four on the map").
 - If they speak another language, carry on in that language.
 
 Where they are: {where}. Local time there: {local_time}.
@@ -102,16 +125,16 @@ Your tools:
   long, budget, what to avoid (e.g. chains), must-haves (quiet, wheelchair access), who is eating.
 - scout: finds restaurants on Google Maps. Every fact about a specific restaurant comes from the scout or from
   Google Search, never from memory.
-- google_search: for what a map can't tell you (is it a chain, is it loud, what is it known for) and for general
-  questions about the area. A chain means a brand with more than a handful of locations.
+- google_search: for what a map can't tell you about a place the scout found (is it a chain, is it loud, what is it
+  known for) and for general questions about the area. Never use it to find restaurants: that's the scout's job. A chain means a brand with more than a handful of locations.
 - navigator: when they've chosen (or ask you to choose), recommend ONE place, then call the navigator with its
   name. The route appears on the map and a QR code opens the same directions in Google Maps on their phone: say
   so, and invite them to scan it. Only say the route is on the map if the navigator says it is.
 
 Hand-offs: before you call the scout or the navigator, first SAY one short sentence, like "Let me send my scout to
 look." While the scout works, keep them company: ask what they feel like eating, or mention one thing about the
-area. Don't describe places until the scout reports. When it reports, give the best two or three in a sentence
-or two and ask which sounds good.
+area. Don't describe places until the scout reports. When it reports, give the top two or three from its list, in its order,
+in a sentence or two, and ask which sounds good. If it reports nothing, say so and suggest widening the search.
 
 Accessibility: the scout's results say whether the entrance, restroom and seating are wheelchair accessible. When
 someone asks, use those facts and say plainly when the answer is unknown."""
@@ -123,9 +146,9 @@ def concierge_instruction(ctx: ReadonlyContext) -> str:
     if lm:
         where = f"near {lm['name']}" + (f", {lm['address']}" if lm.get("address") else "") + (f" ({st.city})" if st.city else "")
         rule = ("You already know this: it comes from this device's location, and the map and the scout start here. "
-                "Do NOT ask where they are. Search around here unless they tell you they're somewhere else; if they do "
-                "(a landmark, an area, a city), call note_preferences with \"near\" (and \"city\") straight away, so the "
-                "map and the scout move there.")
+                "Do NOT ask where they are. Ask instead whether dinner is around here or somewhere else; if it's "
+                "somewhere else (a landmark, an area, a city, maybe another day), call note_preferences with \"near\" "
+                "(and \"city\", and \"when\") straight away, so the map and the scout move there.")
     else:
         where = "not known yet"
         rule = ("Ask where they are before you search, then call note_preferences with \"near\" (and \"city\").")
