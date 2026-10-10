@@ -98,6 +98,15 @@ async def fake_travel_minutes(client, key, origin, destinations, travel="walking
 
 
 routes.travel_minutes = fake_travel_minutes
+LINES: list[dict] = []
+
+
+async def fake_route_line(client, key, origin, destination, travel="walking", traffic=True):
+    LINES.append({"origin": origin, "destination": destination, "travel": travel})
+    return {"polyline": "_p~iF~ps|U_ulLnnqC_mqNvxq`@", "minutes": 6, "metres": 1900}   # Google's documented example
+
+
+routes.route_line = fake_route_line
 places.nearest_place = fake_nearest_place
 
 
@@ -333,6 +342,12 @@ async def main() -> int:
               and "destination_place_id=p-edna" in route.get("url", "") and "travelmode=driving" in route.get("url", ""),
               route.get("url", ""))
         check("QR code is an SVG", route.get("qr_svg", "").startswith("<svg"))
+        check("the route line is fetched from you to the pick, by car",
+              bool(LINES) and LINES[-1]["travel"] == "driving" and LINES[-1]["origin"] == (VENUE["lat"], VENUE["lng"])
+              and abs(LINES[-1]["destination"][0] - 43.6494) < 1e-6, str(LINES[-1:]))
+        check("the route event carries the line, the real minutes and the place",
+              route.get("polyline", "").startswith("_p~iF") and route.get("minutes_about") == 6
+              and route.get("minutes_from") == "routes" and (route.get("place") or {}).get("name") == "Edna + Vita")
         await until(lambda: ("navigator", "done") in [(e["name"], e["state"]) for e in of("agent")])
         check("navigator lights up then finishes", ("navigator", "done") in [(e["name"], e["state"]) for e in of("agent")])
 

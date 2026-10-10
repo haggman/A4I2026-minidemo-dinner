@@ -245,8 +245,9 @@ def _find(st: stages.Stage, place: str) -> Optional[dict]:
     return names[close[0]] if close else None
 
 
-def show_route(tool_context: ToolContext, place: str, travel_mode: str = "") -> dict:
-    """Put directions to the chosen place on the screen as a QR code that opens Google Maps on a phone.
+async def show_route(tool_context: ToolContext, place: str, travel_mode: str = "") -> dict:
+    """Show the way to the chosen place: the route drawn on the map, and a QR code that opens the same directions
+    in Google Maps on a phone.
 
     Args:
       place: the name of the chosen place, as the scout reported it.
@@ -262,9 +263,22 @@ def show_route(tool_context: ToolContext, place: str, travel_mode: str = "") -> 
     travel_mode = travel_of(travel_mode or st.prefs.get("travel") or c.get("travel", "walking"))
     url = maps_links.directions_url(c["name"], c["place_id"], travel_mode)
     st.chosen = c["place_id"]
+    line = None
+    if config.ROUTES and st.landmark and c.get("lat") is not None:
+        try:
+            async with httpx.AsyncClient(timeout=6) as client:
+                line = await routes.route_line(client, config.MAPS_SERVER_KEY, (st.landmark["lat"], st.landmark["lng"]),
+                                               (c["lat"], c["lng"]), travel_mode, config.ROUTES_TRAFFIC)
+            c["minutes_about"], c["minutes_from"] = line["minutes"], "routes"
+        except Exception as e:                       # no line on the map; the QR code still works
+            log.warning("route line failed: %s", e)
     st.emit({"type": "route", "place_id": c["place_id"], "name": c["name"], "url": url,
              "qr_svg": maps_links.qr_svg(url), "travel_mode": travel_mode,
              "minutes_about": c.get("minutes_about"), "minutes_from": c.get("minutes_from"),
-             "maps_uri": c.get("maps_uri")})
+             "maps_uri": c.get("maps_uri"), "polyline": line["polyline"] if line else "",
+             "origin": {"lat": st.landmark["lat"], "lng": st.landmark["lng"]} if st.landmark else None,
+             "place": c})
+    shown = ("the route drawn on the map, and a QR code that opens these directions in Google Maps on a phone"
+             if line else "a QR code that opens these directions in Google Maps on a phone (no route could be drawn)")
     return {"ok": True, "name": c["name"], "travel_mode": travel_mode, "minutes_about": c.get("minutes_about"),
-            "on_screen": "a QR code that opens these directions in Google Maps on a phone (no route is drawn)"}
+            "on_screen": shown}

@@ -29,6 +29,7 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+@media (min-width: 901px) { body { overflow: hidden; } }   /* the stage layout fits the window; the cards scroll inside */
 html, body { height: 100%; }
 body { margin: 0; background: var(--ink); color: var(--text); font-family: var(--body); font-size: 18px; line-height: 1.4; }
 button, input, select { font: inherit; color: inherit; }
@@ -51,21 +52,21 @@ button, input, select { font: inherit; color: inherit; }
 .chip i { font-style: normal; color: var(--muted); margin-right: 5px; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
 @keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
 
-.route { position: absolute; top: 64px; right: 18px; display: flex; gap: 18px; align-items: center; background: rgba(14,19,32,.94);
-  border: 1px solid var(--nav); border-radius: 16px; padding: 16px 20px 16px 16px; max-width: calc(100% - 36px); box-shadow: 0 18px 50px rgba(0,0,0,.5);
-  animation: rise .5s ease-out; }
-@keyframes rise { from { transform: translateY(-20px) scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
-.qr { width: 220px; height: 220px; background: #fff; border-radius: 10px; padding: 8px; flex: none; }
+.qr { width: 200px; height: 200px; background: #fff; border-radius: 10px; padding: 8px; flex: none; }
 .qr svg { width: 100%; height: 100%; display: block; }
-.route h3 { margin: 0 0 4px; font-family: var(--display); font-size: 1.8rem; line-height: 1.1; text-wrap: balance; }
-.route p { margin: 0; color: var(--muted); }
-.route .scan { color: var(--nav); font-weight: 700; margin-top: 10px; font-size: 1.05rem; }
-.route a { color: var(--muted); font-size: .85rem; word-break: break-all; }
+.pick { display: grid; gap: 10px; animation: rise .45s ease-out; }
+@keyframes rise { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+.pick-label { font: 800 .8rem var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--nav); }
+.pickqr { display: flex; gap: 16px; align-items: center; background: var(--panel); border: 1px solid var(--nav); border-radius: 12px; padding: 12px; }
+.pickqr .pmode { font-family: var(--display); font-weight: 800; font-size: 1.5rem; line-height: 1.15; }
+.pickqr .scan { color: var(--nav); font-weight: 700; margin-top: 8px; }
+.pickqr a { color: var(--muted); font-size: .85rem; }
+.linkbtn { justify-self: start; background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; padding: 2px 0; font-size: .9rem; }
+.linkbtn:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
 
 /* ---- right column ---- */
 .side { display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; border-left: 1px solid var(--line); }
-@media (max-width: 900px) { .side { border-left: 0; } .route { position: fixed; top: auto; right: 12px; left: 12px; bottom: 12px; z-index: 5; }
-  .qr { width: 130px; height: 130px; } .route h3 { font-size: 1.3rem; } }
+@media (max-width: 900px) { .side { border-left: 0; } .qr { width: 140px; height: 140px; } .pickqr .pmode { font-size: 1.2rem; } }
 .top { display: flex; align-items: center; gap: 14px; padding: 16px 18px 10px; }
 .orb { width: 64px; height: 64px; border-radius: 50%; flex: none; position: relative; background: radial-gradient(circle at 40% 35%, #ffd08a, var(--lamp) 45%, #7a4a12);
   box-shadow: 0 0 0 0 rgba(243,169,68,.0); transition: box-shadow .08s linear, filter .2s; filter: saturate(.35) brightness(.6); }
@@ -107,6 +108,8 @@ button, input, select { font: inherit; color: inherit; }
 .card { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   padding: 10px; animation: pop .35s ease-out both; }
 .card.chosen { border-color: var(--nav); box-shadow: 0 0 0 2px var(--nav) inset; }
+.pick .card .ph { width: 140px; height: 104px; }
+.pick .card { grid-template-columns: 140px minmax(0, 1fr); }
 .card .ph { width: 112px; height: 88px; border-radius: 8px; background: var(--panel-2); overflow: hidden; position: relative; }
 .card .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .card .num { position: absolute; top: 6px; left: 6px; width: 24px; height: 24px; border-radius: 50%; background: var(--scout); color: #032019; font: 800 .85rem var(--display);
@@ -143,10 +146,6 @@ button, input, select { font: inherit; color: inherit; }
     <div class="nomap" id="nomap"><div><b>Map</b>The Google map appears here once a browser key (MAPS_BROWSER_KEY) is in keys.env.<div class="pins" id="nopins"></div></div></div>
     <div class="where"><span class="here" id="here">Finding where you are…</span><span id="chips"></span></div>
     <div class="gmlogo" id="gmlogo">Google Maps</div>
-    <div class="route" id="route" hidden>
-      <div class="qr" id="qr" aria-label="QR code that opens Google Maps"></div>
-      <div><h3 id="rname"></h3><p id="rmeta"></p><div class="scan">Scan to open it in Google Maps</div><a id="rlink" href="#" target="_blank" rel="noopener"></a></div>
-    </div>
   </section>
 
   <section class="side">
@@ -237,13 +236,35 @@ function setHere(loc) {
   S.markers.__here = new S.gm.AdvancedMarkerElement({ map: S.map, position: { lat: loc.lat, lng: loc.lng }, content: pinEl("", "here"), title: loc.name });
 }
 function redrawPins() {
-  if (!S.map) { $("nopins").innerHTML = S.order.map((id, i) => `<span class="tag">${i + 1} · ${esc(S.places[id].name)}</span>`).join(""); return; }
+  // With a pick made, the map shows only you, the pick and the route between; otherwise every option.
+  const ids = S.chosen && !S.showAll ? [S.chosen] : S.order;
+  if (!S.map) { $("nopins").innerHTML = ids.map(id => `<span class="tag">${S.order.indexOf(id) + 1} · ${esc(S.places[id].name)}</span>`).join(""); return; }
   Object.keys(S.markers).forEach(k => { if (k !== "__here") { S.markers[k].map = null; delete S.markers[k]; } });
   const b = new google.maps.LatLngBounds(); if (S.here) b.extend({ lat: S.here.lat, lng: S.here.lng });
-  S.order.forEach((id, i) => { const p = S.places[id]; if (!p.lat) return;
+  if (S.line) S.line.getPath().forEach(pt => b.extend(pt));
+  S.order.forEach((id, i) => { const p = S.places[id]; if (!p.lat || !ids.includes(id)) return;
     S.markers[id] = new S.gm.AdvancedMarkerElement({ map: S.map, position: { lat: p.lat, lng: p.lng }, content: pinEl(String(i + 1), id === S.chosen ? "chosen" : ""), title: p.name });
     b.extend({ lat: p.lat, lng: p.lng }); });
-  if (S.order.length) S.map.fitBounds(b, { top: 90, bottom: 60, left: 40, right: 40 });
+  if (S.order.length) S.map.fitBounds(b, { top: 90, bottom: 60, left: 60, right: 60 });
+}
+function decodePolyline(str) {
+  // Google's encoded polyline format (what the Routes API returns), to lat/lng points.
+  let i = 0, lat = 0, lng = 0; const out = [];
+  while (i < str.length) {
+    for (let k = 0; k < 2; k++) {
+      let shift = 0, result = 0, b;
+      do { b = str.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20 && i < str.length);
+      const d = (result & 1) ? ~(result >> 1) : (result >> 1);
+      if (k === 0) lat += d; else lng += d;
+    }
+    out.push({ lat: lat / 1e5, lng: lng / 1e5 });
+  }
+  return out;
+}
+function drawLine(encoded) {
+  if (S.line) { S.line.setMap(null); S.line = null; }
+  if (!S.map || !encoded) return;
+  S.line = new google.maps.Polyline({ path: decodePolyline(encoded), map: S.map, strokeColor: "#a98bf5", strokeOpacity: 0.95, strokeWeight: 6 });
 }
 
 // ---------------------------------------------------------------- page updates from the server
@@ -271,11 +292,16 @@ function renderPrefs(p) {
     .map(([k, v]) => `<span class="chip"><i>${esc(PREF_LABELS[k] || k)}</i>${esc(k === "max_minutes" ? v + " min" : k === "travel" ? (TRAVEL_WORD[v] || v) : v)}</span>`).join(" ");
 }
 function renderPlaces(list) {
-  S.places = {}; S.order = []; S.chosen = null; $("route").hidden = true;
+  S.places = {}; S.order = []; S.chosen = null; S.showAll = false; drawLine("");
   list.forEach(p => { S.places[p.place_id] = p; S.order.push(p.place_id); });
-  const c = $("cards"); c.innerHTML = list.length ? "" : `<div class="empty">Nothing matched; the Scout will try again.</div>`;
-  S.order.forEach((id, i) => { const d = document.createElement("article"); d.className = "card"; d.id = "c-" + id; d.style.animationDelay = (i * 70) + "ms"; c.appendChild(d); renderCard(id); });
+  renderList();
   redrawPins();
+}
+function renderList() {
+  const c = $("cards");
+  c.innerHTML = S.order.length ? "" : `<div class="empty">Nothing matched; the Scout will try again.</div>`;
+  if (S.chosen) { const back = document.createElement("button"); back.className = "linkbtn"; back.type = "button"; back.textContent = "Back to your pick"; back.onclick = () => { S.showAll = false; showPick(); redrawPins(); }; c.appendChild(back); }
+  S.order.forEach((id, i) => { const d = document.createElement("article"); d.className = "card"; d.id = "c-" + id; d.style.animationDelay = (i * 70) + "ms"; c.appendChild(d); renderCard(id); });
 }
 function yn(v, yes, no) { return v === true ? `<span class="tag yes">${yes}</span>` : v === false ? `<span class="tag no">${no}</span>` : ""; }
 function renderCard(id) {
@@ -290,13 +316,29 @@ function renderCard(id) {
       <div class="small">${p.photo && attr ? "Photo: " + attr + " · " : ""}${p.maps_uri ? `<a href="${esc(p.maps_uri)}" target="_blank" rel="noopener">Open in Google Maps</a>` : ""}</div></div>`;
 }
 function showRoute(m) {
-  S.chosen = m.place_id; S.order.forEach(renderCard); redrawPins();
-  $("qr").innerHTML = m.qr_svg; $("rname").textContent = m.name;
+  if (m.place && !S.places[m.place_id]) { S.places[m.place_id] = m.place; S.order.push(m.place_id); }
+  if (m.place) Object.assign(S.places[m.place_id], { minutes_about: m.minutes_about, minutes_from: m.minutes_from });
+  S.chosen = m.place_id; S.showAll = false; S.route = m;
+  drawLine(m.polyline);
+  showPick(); redrawPins();
+}
+function showPick() {
+  // The right column becomes the one place you picked, with the QR code that opens the way there.
+  const m = S.route; if (!m) return;
   const mode = { walking: "Walking", driving: "Driving", transit: "Transit" }[m.travel_mode] || m.travel_mode;
-  $("rmeta").textContent = `${mode}${m.minutes_about != null ? (m.minutes_from === "routes" ? ", " : ", about ") + m.minutes_about + " min" : ""}`;
-  $("rlink").href = m.url; $("rlink").textContent = "Open the link";
-  $("route").hidden = false;
-  const card = $("c-" + m.place_id); if (card) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  const time = m.minutes_about != null ? (m.minutes_from === "routes" ? ", " : ", about ") + m.minutes_about + " min" : "";
+  const c = $("cards");
+  c.innerHTML = `<section class="pick" aria-label="Your pick">
+      <div class="pick-label">Your pick</div>
+      <article class="card chosen" id="c-${esc(m.place_id)}"></article>
+      <div class="pickqr"><div class="qr" aria-label="QR code that opens the directions in Google Maps">${m.qr_svg}</div>
+        <div><div class="pmode">${esc(mode + time)}</div>
+          <div class="scan">${m.polyline ? "The route is on the map. " : ""}Scan to open the directions in Google Maps</div>
+          <a href="${esc(m.url)}" target="_blank" rel="noopener">Open the link</a></div></div>
+      ${S.order.length > 1 ? `<button class="linkbtn" type="button" id="showall">See all ${S.order.length} options</button>` : ""}
+    </section>`;
+  renderCard(m.place_id);
+  const all = $("showall"); if (all) all.onclick = () => { S.showAll = true; renderList(); redrawPins(); };
 }
 const AGENT_IDLE = { concierge: "Listening", scout: "Waiting", navigator: "Waiting" };
 function setAgent(name, state, status) {

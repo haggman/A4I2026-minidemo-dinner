@@ -65,17 +65,17 @@ def build_scout() -> Agent:
 
 
 def build_navigator() -> Agent:
-    before, after = _lights("navigator", "Making the QR code", "QR code on screen")
+    before, after = _lights("navigator", "Mapping the route", "Route and QR code on screen")
     return Agent(
         name="navigator",
         model=models.text_model(),
-        description="Puts a QR code on the screen that opens directions to the chosen place in Google "
+        description="Draws the route to the chosen place on the map, with a QR code that opens the same directions in Google "
                     "Maps on their phone. Give it the place's name.",
         instruction=(
             "Call show_route once with the place's name. Use the travel mode the user chose (walking or driving); "
-            "if they didn't say, leave travel_mode empty. Then reply in one short sentence: the QR code is on the "
-            "screen, and scanning it opens the directions in Google Maps. The screen shows the QR code, not the "
-            "directions themselves."),
+            "if they didn't say, leave travel_mode empty. Then reply in one short sentence saying what the tool "
+            "result's on_screen says is showing (usually: the route is on the map, and the QR code opens it in "
+            "Google Maps)."),
         tools=[tools.show_route],
         generate_content_config=SPECIALIST_THINKING,
         before_agent_callback=before,
@@ -105,8 +105,8 @@ Your tools:
 - google_search: for what a map can't tell you (is it a chain, is it loud, what is it known for) and for general
   questions about the area. A chain means a brand with more than a handful of locations.
 - navigator: when they've chosen (or ask you to choose), recommend ONE place, then call the navigator with its
-  name and tell them to scan the QR code on the screen: it opens the directions in Google Maps on their phone.
-  The screen shows the QR code, not the route itself, so never say the directions are on the screen.
+  name. The route appears on the map and a QR code opens the same directions in Google Maps on their phone: say
+  so, and invite them to scan it. Only say the route is on the map if the navigator says it is.
 
 Hand-offs: before you call the scout or the navigator, first SAY one short sentence, like "Let me send my scout to
 look." While the scout works, keep them company: ask what they feel like eating, or mention one thing about the
