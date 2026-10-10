@@ -1,25 +1,27 @@
-"""Dead air: how long is the voice silent while a specialist works, and what shortens it? (About 4 minutes.)
+"""Dead air, round 2: how long is the voice silent while the Scout works, and what shortens it? (About 4 minutes.)
 
     source scripts/activate.sh
     python probe/deadair.py
 
-The first probe (2026-10-09, lab project) found the Concierge says NOTHING while the Scout or Vetter works: it calls
-the specialist, ends its turn silently, and speaks only once the result is back (8.8 s of silence for the Scout,
-14 s for the Vetter). Async function calling did not, by itself, make it talk while it waited.
+Round 1 (2026-10-09) taught us three things. MINIMAL thinking is rejected by gemini-3.8-flash ("Thinking level is
+unsupported"), so the specialists use LOW here. The server nudge works: the Concierge spoke 1.4 s after calling the
+Scout. And the Concierge's own Google Search answered "is JOEY a chain, is it loud" with its first word at 3.4 s,
+where the Vetter alone took 18.6 s. One suspect: when note_preferences was the ONLY call in a turn, the Concierge
+never spoke again. Its response is scheduled SILENT, which may leave the voice waiting for nothing.
 
-This tries the fixes, each in a fresh live session, and prints one line per try:
-  S1-S4  the specialists alone: default thinking vs MINIMAL thinking (and a terser Scout answer)
-  L1     the team as in the first probe, but with the faster specialists
-  L2     + the Concierge told to say a sentence BEFORE it calls the Scout
-  L3     + our server nudges it ("say one short line while the scout works") the moment it calls the Scout
-  L4     the Vetter (a) versus the Concierge answering "is it a chain, is it loud?" with its own Google Search (b)
-  L5     the Scout with Google Search beside its Places tool, asked for "no chains" up front (S5: the same, alone)
-  L6     a general question ("I'm near Times Square, what's around?") answered by the Concierge's own Search
-For each: seconds until the first word, whether it spoke while the specialist worked, and the LONGEST SILENCE
-between sending and hearing the results. That last number is the one that matters on stage.
+  S1-S5  the specialists alone: default thinking vs LOW, a terse Scout, the Scout with Google Search
+  L1     speak-first instruction, note_preferences SILENT (as before)
+  L2     the same with note_preferences an ordinary (blocking) tool
+  L3     L2 + the server nudge when the Scout is called
+  L4     L3 with Google Search beside the Scout's Places tool, asked for "no chains" up front
+  L5     "I'm near Times Square, what's around?" answered by the Concierge's own Search (no hand-off)
+  L6     "Is JOEY a chain, is it loud?" by the Concierge's own Search, again (a second sample)
+For each: the first word, whether it spoke while the Scout worked, when the results were heard, and the LONGEST
+SILENCE from sending to hearing the results. Errors inside the specialists are now printed, not swallowed.
 """
 import asyncio
 import json
+import logging
 import sys
 import time
 from pathlib import Path
@@ -31,6 +33,19 @@ import httpx  # noqa: E402
 from google.genai import types  # noqa: E402
 
 LINES: list[str] = []
+ERRORS: list[str] = []
+
+
+class _Catch(logging.Handler):
+    """ADK logs a failed background tool (e.g. a specialist that crashed) instead of raising; keep those."""
+    def emit(self, record):
+        msg = record.getMessage()
+        if record.exc_info and record.exc_info[1] is not None:
+            msg += f" :: {type(record.exc_info[1]).__name__}: {str(record.exc_info[1])[:200]}"
+        ERRORS.append(msg[:300])
+
+
+logging.getLogger().addHandler(_Catch(level=logging.ERROR))
 TIMELINES: dict[str, list] = {}
 
 
@@ -128,20 +143,18 @@ async def run_text(agent, text: str) -> tuple[float, str]:
 
 
 async def specialists_alone() -> None:
-    for label, level, terse in [("S1 scout, default thinking", "", False), ("S2 scout, MINIMAL, terse", "MINIMAL", True)]:
-        scout, _ = make_specialists(level, {}, terse)
+    tries = [("S1 scout, default thinking", "", False, False, "Dinner within a 15-minute walk, not a chain."),
+             ("S2 scout, LOW, terse", "LOW", True, False, "Dinner within a 15-minute walk, not a chain."),
+             ("S5 scout + Google Search, LOW, no chains", "LOW", True, True,
+              "Dinner within a 15-minute walk, no chains, somewhere we can talk.")]
+    for label, level, terse, search, ask in tries:
+        scout, _ = make_specialists(level, {}, terse, scout_search=search)
         try:
-            s, txt = await asyncio.wait_for(run_text(scout, "Dinner within a 15-minute walk, not a chain."), 60)
-            out(f"[INFO] {label}: {s:.2f}s · {txt[:140]!r}")
+            s, txt = await asyncio.wait_for(run_text(scout, ask), 60)
+            out(f"[INFO] {label}: {s:.2f}s · {txt[:160]!r}")
         except Exception as e:
             out(f"[FAIL] {label}: {type(e).__name__}: {str(e)[:200]}")
-    scout, _ = make_specialists("MINIMAL", {}, True, scout_search=True)
-    try:
-        s, txt = await asyncio.wait_for(run_text(scout, "Dinner within a 15-minute walk, no chains, somewhere we can talk."), 60)
-        out(f"[INFO] S5 scout + Google Search, MINIMAL, no chains: {s:.2f}s · {txt[:160]!r}")
-    except Exception as e:
-        out(f"[FAIL] S5 scout + Google Search: {type(e).__name__}: {str(e)[:200]}")
-    for label, level in [("S3 vetter, default thinking", ""), ("S4 vetter, MINIMAL", "MINIMAL")]:
+    for label, level in [("S3 vetter, default thinking", ""), ("S4 vetter, LOW", "LOW")]:
         _, vetter = make_specialists(level, {}, True)
         try:
             s, txt = await asyncio.wait_for(run_text(vetter, "Is JOEY King St in Toronto a chain, and is it loud?"), 60)
@@ -165,7 +178,7 @@ NUDGE = ("(Your scout is searching now. While it works, keep the user company: o
 
 
 async def live_try(label: str, instruction: str, text: str, *, own_search=False, nudge=False, waits_for="scout",
-                   scout_search=False) -> None:
+                   scout_search=False, note_silent=False) -> None:
     from google.adk.agents import Agent
     from google.adk.agents.live_request_queue import LiveRequestQueue
     from google.adk.agents.run_config import RunConfig
@@ -175,7 +188,7 @@ async def live_try(label: str, instruction: str, text: str, *, own_search=False,
     from google.adk.tools.function_tool import FunctionTool
 
     marks: dict = {}
-    scout, vetter = make_specialists("MINIMAL", marks, True, scout_search=scout_search)
+    scout, vetter = make_specialists("LOW", marks, True, scout_search=scout_search)
 
     def note_preferences(city: str = "", cuisine: str = "", walk_minutes: int = 0, budget: str = "",
                          avoid: str = "", must_have: str = "") -> dict:
@@ -192,7 +205,8 @@ async def live_try(label: str, instruction: str, text: str, *, own_search=False,
         return {"noted": True}
 
     note = FunctionTool(note_preferences)
-    note.response_scheduling = types.FunctionResponseScheduling.SILENT
+    if note_silent:
+        note.response_scheduling = types.FunctionResponseScheduling.SILENT
     st = AgentTool(scout)
     st.response_scheduling = types.FunctionResponseScheduling.WHEN_IDLE
     tools = [note, st]
@@ -234,10 +248,13 @@ async def live_try(label: str, instruction: str, text: str, *, own_search=False,
                 if ev.output_transcription and ev.output_transcription.text and not ev.partial:
                     said.append(ev.output_transcription.text)
                     tl.append((rel(now), "said: " + ev.output_transcription.text[:80]))
-                if ev.grounding_metadata:
-                    sep = ev.grounding_metadata.search_entry_point
+                gm = ev.grounding_metadata
+                if gm and (gm.web_search_queries or gm.grounding_chunks):
+                    sep = gm.search_entry_point
                     has = bool(sep and sep.rendered_content)
-                    tl.append((rel(now), "search grounding" + (" WITH suggestions chip" if has else " (no suggestions chip)")))
+                    tl.append((rel(now), f"SEARCHED {len(gm.web_search_queries or [])} queries, "
+                                         f"{len(gm.grounding_chunks or [])} sources, suggestions chip "
+                                         f"{'YES' if has else 'no'}"))
                 if ev.turn_complete:
                     completes.append(now)
                     tl.append((rel(now), "turn_complete"))
@@ -268,13 +285,20 @@ async def live_try(label: str, instruction: str, text: str, *, own_search=False,
     await runner.close()
 
     TIMELINES[label] = [(round(t, 2), k) for t, k in tl]
+    if ERRORS:
+        out(f"[FAIL] {label}: a specialist failed: {ERRORS[-1]}")
+        ERRORS.clear()
     if errors:
         out(f"[FAIL] {label}: {errors[0]}")
         return
     s0 = (marks.get(f"{waits_for} start") or [None])[-1]
     s1 = (marks.get(f"{waits_for} end") or [None])[-1]
     first = rel(audio[0]) if audio else None
-    if waits_for == "speech" or s1 is None:
+    if waits_for != "speech" and s1 is None:
+        out(f"[WARN] {label}: the {waits_for} never finished · first word {first if first is None else round(first, 2)} · "
+            f"said: {' '.join(said)[:120]!r}")
+        return
+    if waits_for == "speech":
         result_at = audio[0] if audio else None
         during = None
     else:
@@ -296,7 +320,7 @@ async def main() -> int:
     if not ok or not config.MAPS_SERVER_KEY:
         print(why or "MAPS_SERVER_KEY is empty")
         return 1
-    print(f"Dead-air probe · live {config.LIVE_MODEL} ({config.BACKEND} {config.VERTEX_LOCATION}) · "
+    print(f"Dead-air probe, round 2 · live {config.LIVE_MODEL} ({config.BACKEND} {config.VERTEX_LOCATION}) · "
           f"specialists {config.TEXT_MODEL} · about 4 minutes\n")
     t = time.perf_counter()
     await locate()
@@ -304,17 +328,16 @@ async def main() -> int:
     ask = ("I'm in Toronto doing an event for Google. It's coming up on dinner time and I want something within "
            "about a fifteen-minute walk. Find me a few options.")
     vet = "Is JOEY King St a chain? And is it loud inside? I want to be able to talk."
-    await live_try("L1 faster specialists", BASE + DELEGATE, ask)
-    await live_try("L2 + speak first", BASE + SPEAK_FIRST + DELEGATE, ask)
-    await live_try("L3 + server nudge", BASE + DELEGATE, ask, nudge=True)
-    await live_try("L4a vetter, minimal", BASE + SPEAK_FIRST + DELEGATE, vet, waits_for="vetter")
-    await live_try("L4b own Google Search", BASE + OWN_SEARCH, vet, own_search=True, waits_for="speech")
-    await live_try("L5 scout with Search, no chains", BASE + SPEAK_FIRST + OWN_SEARCH,
+    await live_try("L1 speak-first, note SILENT", BASE + SPEAK_FIRST + DELEGATE, ask, note_silent=True)
+    await live_try("L2 speak-first, note blocking", BASE + SPEAK_FIRST + DELEGATE, ask)
+    await live_try("L3 + server nudge", BASE + SPEAK_FIRST + DELEGATE, ask, nudge=True)
+    await live_try("L4 scout with Search, no chains, nudge", BASE + SPEAK_FIRST + OWN_SEARCH,
                    "I'm in Toronto, it's dinner time. Somewhere within fifteen minutes' walk, no chains, "
-                   "quiet enough to talk.", own_search=True, scout_search=True)
-    await live_try("L6 general question, own Search", BASE + OWN_SEARCH,
+                   "quiet enough to talk.", own_search=True, scout_search=True, nudge=True)
+    await live_try("L5 Times Square, own Search", BASE + OWN_SEARCH,
                    "I'm near Times Square in New York tonight. What's around here, what should I know?",
                    own_search=True, waits_for="speech")
+    await live_try("L6 chain question, own Search", BASE + OWN_SEARCH, vet, own_search=True, waits_for="speech")
 
     print("\n" + "=" * 26 + " DEAD AIR — paste from here " + "=" * 26)
     print(f"deadair · {time.perf_counter() - t:.0f}s · live {config.VERTEX_LOCATION}")
