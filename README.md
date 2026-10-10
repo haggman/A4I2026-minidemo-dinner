@@ -3,52 +3,70 @@
 A five-minute voice demo for the Agents for Impact 2026 events. You open a page, say *"I'm in Toronto doing an
 event for Google, it's coming up on dinner time and I'm looking for something to eat,"* and hold a real spoken
 conversation that narrows it down to one restaurant, while the screen shows a Google map, restaurant cards and,
-at the end, a QR code that opens the place on your phone.
+at the end, a QR code that opens walking directions in Google Maps on your phone.
 
 Behind it is a small team of agents built with the Agent Development Kit (ADK):
 
 - **Concierge** (Gemini 3.8 Live): the only one that talks. It keeps the conversation and your preferences,
-  and hands work to the others while it keeps talking.
-- **Scout** (Gemini 3.8 Flash + the Places API): finds restaurants near you.
-- **Vetter** (Gemini 3.8 Flash + Google Search): answers what a map can't: is it a chain, is it loud.
+  answers general questions with Google Search, and hands work to the other two while it keeps talking.
+- **Scout** (Gemini 3.8 Flash + the Places API): finds restaurants near you; the cards and pins appear as it works.
+- **Navigator** (Gemini 3.8 Flash + Google Maps links): turns your pick into directions and a QR code.
 
-> **Status (2026-10-09): probe stage.** Nothing here is the demo yet. `probe/probe.py` checks the facts the
-> build depends on; the agents, server and page come next.
+> **Status (2026-10-09): built, not yet run against Google.** The agents, the server and the page are done and
+> pass the offline harness (23/23). Next: a real conversation in Cloud Shell, then the rehearsal kit.
 
-## Run the probe
+## Run it in Cloud Shell
 
-Run it in **Cloud Shell, in your own Google Cloud project** (not a Skills project, so the key outlives the lab).
-Gemini runs on Vertex AI with Cloud Shell's own credentials, so there is **no Gemini key**. The one key is for
-the Places API (that is how the Places calls are authenticated in this build), and a script makes it for you.
+Use your own Google Cloud project, or a lab project for a try-out. Gemini runs on Vertex AI with Cloud Shell's
+own credentials (no Gemini key). Two Maps keys are made for you: one for the server's Places searches and one,
+locked to the Maps JavaScript API and to Cloud Shell and localhost, for the map in the browser.
 
 ```bash
 gcloud config set project YOUR_PROJECT_ID
 git clone https://github.com/haggman/A4I2026-minidemo-dinner.git && cd A4I2026-minidemo-dinner
-bash scripts/make_places_key.sh     # enables Vertex AI + Places API (New), makes the key, writes keys.env
+bash scripts/make_places_key.sh     # Vertex AI + Places API (New); the server's key
+bash scripts/make_map_key.sh        # Maps JavaScript API; the page's key
 source scripts/activate.sh
-python probe/probe.py
+bash scripts/run.sh
 ```
 
-It takes three or four minutes and costs a few cents (a handful of Places searches and Gemini calls). When it
-finishes, copy everything between the two `DINNER SCOUT PROBE` lines and paste it back. It also saves each
-spoken reply in `probe/out/` as a `.wav`; to hear one, right-click it in the Cloud Shell Editor's file list and
-choose **Download**.
+Then **Web Preview > Preview on port 8080**, press **Start**, allow the microphone, and talk. Use a headset or a
+handheld mic: speakers feeding the mic make the voice interrupt itself. If the room fights back, tick **Hold to
+talk** before Start and hold the button while you speak. The box at the bottom takes typed turns as a rehearsal
+backup, and **First word** shows how long the voice took to start answering.
 
-The Live model is served from the Vertex multi-region `us` (set in `demo.env`); `us-central1` works too, but
-`global` answers "not found". `python probe/where_is_live.py` asks every location at once.
+On a laptop instead: the same commands in a terminal (after `gcloud auth application-default login`), then open
+http://localhost:8080.
 
-**If Vertex won't serve the Live model** (P2 fails with "not found or your project does not have access"), the
-fallback is a Gemini API key: in Google AI Studio click **Get API key**, then **Create API key** in the same
-project, put it in `keys.env` as `GOOGLE_API_KEY`, set `A4I_BACKEND=gemini-api` in `demo.env`, and run the probe
-again. P6 already tells you whether that route works, if a key is present.
+## What's here
 
-**In a short-lived lab project** (a Skills project, say), bring a Places key from your own project instead:
-`cp keys.env.example keys.env`, put the key in as `MAPS_SERVER_KEY`, then run the same commands; the script sees
-the key and only switches on Vertex AI. The key bills to your project wherever it is used.
+| Path | What it is |
+|---|---|
+| `dinner_scout/agents.py` | The three agents, the Concierge's instructions, and why it's built this way |
+| `dinner_scout/tools.py` | `note_preferences`, `search_places`, `show_route`: each does the work and updates the page |
+| `dinner_scout/server.py` | FastAPI + WebSocket relay between the page and the live session |
+| `static/index.html` | The page: map, voice, who's working, cards, QR code |
+| `demo.env` | Settings you might change (models, Vertex location, landmarks per city, walking pace) |
+| `tests/offline_harness.py` | Scripted stand-ins for Gemini and Places drive the real server; no Google calls |
+| `tests/serve_offline.py` | The page with those stand-ins, for trying the layout without keys |
+| `probe/` | The probes that settled the design (see below) |
 
-**No script?** The console route for the Places key: **Google Maps Platform > APIs & Services**, enable
-**Places API (New)**; then **Google Maps Platform > Keys & Credentials > Create credentials > API key**, restrict
-it to Places API (New), and put it in `keys.env` as `MAPS_SERVER_KEY` (`cp keys.env.example keys.env` first).
+## How the design was settled
+
+`probe/probe.py`, `probe/deadair.py` and `probe/where_is_live.py` were run in a lab project on 2026-10-09:
+
+- Gemini 3.8 Live on Vertex answers from the `us` multi-region (and `us-central1`), not from `global`.
+- Left alone, the voice goes silent while a specialist works. It now says a sentence before a hand-off and keeps
+  you company while the Scout searches; the server nudges it if it hands off in silence. Worst silence in the
+  best run: 4.2 s, down from 9 to 14 s.
+- `note_preferences` must be an ordinary tool: scheduled SILENT, it could leave the voice silent for good.
+- The specialists think at LOW (gemini-3.8-flash rejects MINIMAL) and answer tersely: the Scout went from 10 s
+  to 3.6 s.
+- Google Search on the Concierge answers "is it a chain, is it loud" in about 2 s, so there is no separate
+  search agent.
+
+If Vertex won't serve the Live model to a project, a Gemini API key is the fallback: create one in Google AI
+Studio (**Get API key**), put it in `keys.env` as `GOOGLE_API_KEY`, and set `A4I_BACKEND=gemini-api` in `demo.env`.
 
 ## Licence
 

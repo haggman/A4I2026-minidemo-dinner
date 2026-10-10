@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dinner Scout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a stage screen. The map owns the left; the right column reads top to bottom as the conversation
+   happens: the voice, who's working, what it found. The QR code rises over the map at the end.
+   One dark look on purpose: it is projected in a dim room. */
+:root {
+  --ink: #0e1320;          /* page */
+  --panel: #161d2d;        /* cards and panels */
+  --panel-2: #1d2639;
+  --line: #2a3450;
+  --text: #eef1f7;
+  --muted: #a3adc4;
+  --lamp: #f3a944;         /* the Concierge, and "what I know" */
+  --scout: #45c4b0;        /* the Scout */
+  --nav: #a98bf5;          /* the Navigator */
+  --bad: #ef6f5e;
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--ink); color: var(--text); font-family: var(--body); font-size: 18px; line-height: 1.4; }
+button, input, select { font: inherit; color: inherit; }
+.app { height: 100%; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(380px, 1fr); }
+@media (max-width: 900px) { .app { grid-template-columns: 1fr; height: auto; } .mapwrap { height: 55vh; } }
+
+/* ---- map side ---- */
+.mapwrap { position: relative; min-width: 0; background: #0b1019; }
+#map { position: absolute; inset: 0; }
+.nomap { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); padding: 24px;
+  background: radial-gradient(circle at 50% 45%, #18223a 0, #0b1019 70%); }
+.nomap b { display: block; font-family: var(--display); font-size: 1.6rem; color: var(--text); margin-bottom: 6px; }
+.nomap .pins { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 560px; }
+.gmlogo { position: absolute; left: 12px; bottom: 10px; font: 600 13px var(--body); color: #fff; background: rgba(0,0,0,.55); padding: 3px 8px; border-radius: 4px; }
+.where { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; pointer-events: none; }
+.where .here { background: rgba(14,19,32,.88); border: 1px solid var(--line); padding: 6px 12px; border-radius: 999px; font-weight: 700; }
+.where .here small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.chip { background: rgba(243,169,68,.14); border: 1px solid rgba(243,169,68,.55); color: #ffd9a3; padding: 5px 11px; border-radius: 999px; font-size: .9rem;
+  animation: pop .35s ease-out; }
+.chip i { font-style: normal; color: var(--muted); margin-right: 5px; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+@keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.route { position: absolute; left: 18px; bottom: 44px; display: flex; gap: 18px; align-items: center; background: rgba(14,19,32,.94);
+  border: 1px solid var(--nav); border-radius: 16px; padding: 16px 20px 16px 16px; max-width: calc(100% - 36px); box-shadow: 0 18px 50px rgba(0,0,0,.5);
+  animation: rise .5s ease-out; }
+@keyframes rise { from { transform: translateY(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+.qr { width: 190px; height: 190px; background: #fff; border-radius: 10px; padding: 8px; flex: none; }
+.qr svg { width: 100%; height: 100%; display: block; }
+.route h3 { margin: 0 0 4px; font-family: var(--display); font-size: 1.8rem; line-height: 1.1; text-wrap: balance; }
+.route p { margin: 0; color: var(--muted); }
+.route .scan { color: var(--nav); font-weight: 700; margin-top: 10px; font-size: 1.05rem; }
+.route a { color: var(--muted); font-size: .85rem; word-break: break-all; }
+
+/* ---- right column ---- */
+.side { display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr) auto; min-width: 0; border-left: 1px solid var(--line); }
+@media (max-width: 900px) { .side { border-left: 0; } .qr { width: 130px; height: 130px; } .route h3 { font-size: 1.3rem; } }
+.top { display: flex; align-items: center; gap: 14px; padding: 16px 18px 10px; }
+.orb { width: 64px; height: 64px; border-radius: 50%; flex: none; position: relative; background: radial-gradient(circle at 40% 35%, #ffd08a, var(--lamp) 45%, #7a4a12);
+  box-shadow: 0 0 0 0 rgba(243,169,68,.0); transition: box-shadow .08s linear, filter .2s; filter: saturate(.35) brightness(.6); }
+.orb.on { filter: none; }
+.title { min-width: 0; }
+.title h1 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 1.9rem; letter-spacing: -.01em; line-height: 1; }
+.title .state { color: var(--muted); font-size: .95rem; margin-top: 4px; }
+.controls { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.btn { border: 1px solid var(--line); background: var(--panel-2); border-radius: 10px; padding: 9px 16px; cursor: pointer; font-weight: 700; }
+.btn.go { background: var(--lamp); color: #231400; border-color: var(--lamp); }
+.btn:focus-visible { outline: 3px solid var(--lamp); outline-offset: 2px; }
+.btn[disabled] { opacity: .5; cursor: default; }
+.hold { display: none; width: calc(100% - 36px); margin: 0 18px 10px; padding: 14px; font-size: 1.1rem; border-radius: 12px; border: 2px dashed var(--lamp);
+  background: transparent; color: var(--lamp); font-weight: 700; cursor: pointer; user-select: none; touch-action: none; }
+.hold.show { display: block; }
+.hold.down { background: var(--lamp); color: #231400; border-style: solid; }
+
+.team { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 18px 12px; }
+.agent { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; transition: border-color .2s, background .2s; }
+.agent .nm { font-family: var(--display); font-weight: 800; font-size: 1.05rem; display: flex; align-items: center; gap: 7px; }
+.agent .nm::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--c); opacity: .35; flex: none; }
+.agent .what { color: var(--muted); font-size: .72rem; letter-spacing: .02em; margin-top: 2px; }
+.agent .st { font-size: .85rem; margin-top: 6px; min-height: 2.4em; color: var(--muted); overflow-wrap: anywhere; }
+.agent.working { border-color: var(--c); background: color-mix(in srgb, var(--c) 12%, var(--panel)); }
+.agent.working .nm::before { opacity: 1; animation: blink 1s infinite; }
+.agent.working .st { color: var(--text); }
+@keyframes blink { 50% { opacity: .3; } }
+#a-concierge { --c: var(--lamp); } #a-scout { --c: var(--scout); } #a-navigator { --c: var(--nav); }
+
+.captions { padding: 0 18px 10px; min-height: 5.6em; }
+.cap { margin: 0 0 6px; font-size: 1.05rem; }
+.cap.cap-user { color: var(--muted); }
+.cap.cap-user::before { content: "You  "; color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; }
+.cap.cap-agent::before { content: "Concierge  "; color: var(--lamp); font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; }
+.cap.cut::after { content: " (interrupted)"; color: var(--bad); font-size: .8rem; }
+
+.cards { overflow-y: auto; padding: 0 18px 12px; display: grid; gap: 10px; align-content: start; min-height: 0; }
+.empty { color: var(--muted); border: 1px dashed var(--line); border-radius: 12px; padding: 16px; }
+.card { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px; animation: pop .35s ease-out both; }
+.card.chosen { border-color: var(--nav); box-shadow: 0 0 0 2px var(--nav) inset; }
+.card .ph { width: 112px; height: 88px; border-radius: 8px; background: var(--panel-2); overflow: hidden; position: relative; }
+.card .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card .num { position: absolute; top: 6px; left: 6px; width: 24px; height: 24px; border-radius: 50%; background: var(--scout); color: #032019; font: 800 .85rem var(--display);
+  display: grid; place-items: center; }
+.card h4 { margin: 0; font-family: var(--display); font-size: 1.15rem; line-height: 1.15; }
+.card .meta { color: var(--muted); font-size: .88rem; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.card .meta b { color: var(--text); font-weight: 700; }
+.tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.tag { font-size: .75rem; padding: 2px 7px; border-radius: 6px; background: var(--panel-2); color: var(--muted); }
+.tag.yes { color: #bff3ea; background: rgba(69,196,176,.16); }
+.tag.no { color: #ffc3ba; background: rgba(239,111,94,.14); }
+.card .small { font-size: .72rem; color: var(--muted); margin-top: 6px; }
+.card .small a { color: var(--muted); }
+
+.foot { border-top: 1px solid var(--line); padding: 8px 18px 10px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: .85rem; color: var(--muted); }
+.foot form { display: flex; gap: 6px; flex: 1 1 260px; min-width: 0; }
+.foot input[type=text] { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+.foot select { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.sources { width: 100%; font-size: .78rem; }
+.sources a { color: var(--muted); margin-right: 10px; }
+.toast { position: fixed; right: 16px; bottom: 16px; max-width: 420px; background: #3a1712; border: 1px solid var(--bad); color: #ffd6cf; padding: 10px 14px; border-radius: 10px; z-index: 9; }
+.pin { background: var(--scout); color: #032019; font: 800 14px var(--display); width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.pin.chosen { background: var(--nav); color: #170838; transform: scale(1.35); }
+.pin.here { background: var(--lamp); color: #231400; width: 18px; height: 18px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <section class="mapwrap" aria-label="Map">
+    <div id="map"></div>
+    <div class="nomap" id="nomap"><div><b>Map</b>The Google map appears here once a browser key (MAPS_BROWSER_KEY) is in keys.env.<div class="pins" id="nopins"></div></div></div>
+    <div class="where"><span class="here" id="here">Where are you?</span><span id="chips"></span></div>
+    <div class="gmlogo" id="gmlogo">Google Maps</div>
+    <div class="route" id="route" hidden>
+      <div class="qr" id="qr" aria-label="QR code that opens Google Maps"></div>
+      <div><h3 id="rname"></h3><p id="rmeta"></p><div class="scan">Scan to open it in Google Maps</div><a id="rlink" href="#" target="_blank" rel="noopener"></a></div>
+    </div>
+  </section>
+
+  <section class="side">
+    <div class="top">
+      <div class="orb" id="orb" aria-hidden="true"></div>
+      <div class="title"><h1>Dinner Scout</h1><div class="state" id="state">Press Start, then just talk.</div></div>
+      <div class="controls">
+        <button class="btn go" id="start" type="button">Start</button>
+        <button class="btn" id="stop" type="button" hidden>Stop</button>
+      </div>
+    </div>
+    <button class="hold" id="hold" type="button">Hold to talk</button>
+    <div class="team" aria-label="Who's working">
+      <div class="agent" id="a-concierge"><div class="nm">Concierge</div><div class="what">Gemini 3.8 Live · voice · Google Search</div><div class="st">Waiting</div></div>
+      <div class="agent" id="a-scout"><div class="nm">Scout</div><div class="what">Gemini 3.8 Flash · Google Maps Places</div><div class="st">Waiting</div></div>
+      <div class="agent" id="a-navigator"><div class="nm">Navigator</div><div class="what">Gemini 3.8 Flash · Google Maps directions</div><div class="st">Waiting</div></div>
+    </div>
+    <div class="captions" id="captions" aria-live="polite"></div>
+    <div class="cards" id="cards"><div class="empty">Restaurants show up here as the Scout finds them.</div></div>
+    <div class="foot">
+      <label>City <select id="city"></select></label>
+      <label><input type="checkbox" id="holdmode"> Hold to talk</label>
+      <span>First word <span class="mono" id="lat">–</span></span>
+      <form id="typed"><input type="text" id="typedtext" placeholder="Type instead (rehearsal backup)" aria-label="Type a message"><button class="btn" type="submit">Send</button></form>
+      <div class="sources" id="sources"></div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const S = { ws: null, cfg: null, mode: "auto", inCtx: null, outCtx: null, outGain: null, outAnalyser: null, inAnalyser: null,
+  playing: [], nextTime: 0, holding: false, places: {}, order: [], markers: {}, here: null, map: null, gm: null,
+  cap: { user: null, agent: null } };
+
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 6000); }
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+// ---------------------------------------------------------------- config and map
+async function boot() {
+  try { S.cfg = await (await fetch("/api/config")).json(); } catch (e) { S.cfg = { cities: ["Toronto"], default_city: "Toronto" }; }
+  const sel = $("city");
+  (S.cfg.cities || []).forEach(c => { const o = document.createElement("option"); o.textContent = c; if (c === S.cfg.default_city) o.selected = true; sel.appendChild(o); });
+  if (S.cfg.maps_browser_key) loadMap(S.cfg.maps_browser_key, S.cfg.map_id || "DEMO_MAP_ID");
+}
+function loadMap(key, mapId) {
+  window.__initMap = async () => {
+    try {
+      const { Map } = await google.maps.importLibrary("maps");
+      const marker = await google.maps.importLibrary("marker");
+      const opts = { center: { lat: 43.6454, lng: -79.3808 }, zoom: 15, mapId, disableDefaultUI: true, zoomControl: true, clickableIcons: false };
+      try { if (google.maps.ColorScheme) opts.colorScheme = google.maps.ColorScheme.DARK; } catch (e) {}
+      S.map = new Map($("map"), opts);
+      S.gm = marker;
+      $("nomap").hidden = true; $("gmlogo").hidden = true;      // the Google map carries its own logo
+      if (S.here) setHere(S.here); redrawPins();
+    } catch (e) { toast("The map didn't load: " + e.message); }
+  };
+  const s = document.createElement("script");
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly&loading=async&callback=__initMap`;
+  s.async = true; s.onerror = () => toast("The map script didn't load (network?). Cards still work.");
+  document.head.appendChild(s);
+}
+function pinEl(label, cls) { const d = document.createElement("div"); d.className = "pin " + (cls || ""); d.textContent = label; return d; }
+function setHere(loc) {
+  S.here = loc;
+  $("here").innerHTML = `Near ${esc(loc.name)}<small>${esc(loc.local_time || "")}</small>`;
+  if (!S.map) return;
+  S.map.panTo({ lat: loc.lat, lng: loc.lng }); S.map.setZoom(15);
+  if (S.markers.__here) S.markers.__here.map = null;
+  S.markers.__here = new S.gm.AdvancedMarkerElement({ map: S.map, position: { lat: loc.lat, lng: loc.lng }, content: pinEl("", "here"), title: loc.name });
+}
+function redrawPins() {
+  if (!S.map) { $("nopins").innerHTML = S.order.map((id, i) => `<span class="tag">${i + 1} · ${esc(S.places[id].name)}</span>`).join(""); return; }
+  Object.keys(S.markers).forEach(k => { if (k !== "__here") { S.markers[k].map = null; delete S.markers[k]; } });
+  const b = new google.maps.LatLngBounds(); if (S.here) b.extend({ lat: S.here.lat, lng: S.here.lng });
+  S.order.forEach((id, i) => { const p = S.places[id]; if (!p.lat) return;
+    S.markers[id] = new S.gm.AdvancedMarkerElement({ map: S.map, position: { lat: p.lat, lng: p.lng }, content: pinEl(String(i + 1), id === S.chosen ? "chosen" : ""), title: p.name });
+    b.extend({ lat: p.lat, lng: p.lng }); });
+  if (S.order.length) S.map.fitBounds(b, { top: 90, bottom: 60, left: 40, right: 40 });
+}
+
+// ---------------------------------------------------------------- page updates from the server
+function handle(m) {
+  switch (m.type) {
+    case "ready": $("state").textContent = S.mode === "hold" ? "Hold the button and talk." : "Listening. Just talk."; $("orb").classList.add("on"); break;
+    case "location": setHere(m); break;
+    case "prefs": renderPrefs(m.prefs); break;
+    case "places": renderPlaces(m.places); break;
+    case "photo": { const p = S.places[m.place_id]; if (!p) break; p.photo = m.uri; p.attr = m.attributions; renderCard(m.place_id); break; }
+    case "route": showRoute(m); break;
+    case "agent": setAgent(m.name, m.state, m.status); break;
+    case "transcript": caption(m.who, m.text, m.final); break;
+    case "interrupted": flush(); if (S.cap.agent) S.cap.agent.classList.add("cut"); S.cap.agent = null; break;
+    case "turn_complete": S.cap.agent = null; break;
+    case "sources": $("sources").innerHTML = "Google Search: " + m.items.map(i => `<a href="${esc(i.uri)}" target="_blank" rel="noopener">${esc(i.title)}</a>`).join(""); break;
+    case "latency": $("lat").textContent = (m.first_audio_ms / 1000).toFixed(1) + " s"; break;
+    case "error": toast(m.message); break;
+  }
+}
+const PREF_LABELS = { near: "near", city: "city", cuisine: "food", walk_minutes: "walk", budget: "budget", avoid: "avoid", must_have: "must", party: "who" };
+function renderPrefs(p) {
+  $("chips").innerHTML = Object.entries(p).filter(([k]) => k !== "near" && k !== "city")
+    .map(([k, v]) => `<span class="chip"><i>${esc(PREF_LABELS[k] || k)}</i>${esc(k === "walk_minutes" ? v + " min" : v)}</span>`).join(" ");
+}
+function renderPlaces(list) {
+  S.places = {}; S.order = []; S.chosen = null; $("route").hidden = true;
+  list.forEach(p => { S.places[p.place_id] = p; S.order.push(p.place_id); });
+  const c = $("cards"); c.innerHTML = list.length ? "" : `<div class="empty">Nothing matched; the Scout will try again.</div>`;
+  S.order.forEach((id, i) => { const d = document.createElement("article"); d.className = "card"; d.id = "c-" + id; d.style.animationDelay = (i * 70) + "ms"; c.appendChild(d); renderCard(id); });
+  redrawPins();
+}
+function yn(v, yes, no) { return v === true ? `<span class="tag yes">${yes}</span>` : v === false ? `<span class="tag no">${no}</span>` : ""; }
+function renderCard(id) {
+  const p = S.places[id], d = $("c-" + id); if (!p || !d) return;
+  const i = S.order.indexOf(id) + 1;
+  const attr = (p.attr || []).map(a => a.uri ? `<a href="${esc(a.uri)}" target="_blank" rel="noopener">${esc(a.name)}</a>` : esc(a.name)).join(", ");
+  d.className = "card" + (id === S.chosen ? " chosen" : "");
+  d.innerHTML = `<div class="ph">${p.photo ? `<img src="${esc(p.photo)}" alt="" onerror="this.remove()">` : ""}<span class="num">${i}</span></div>
+    <div style="min-width:0"><h4>${esc(p.name)}</h4>
+      <div class="meta">${p.rating ? `<b>${p.rating}★</b> (${(p.ratings || 0).toLocaleString()}) · ` : ""}${p.price ? esc(p.price) + " · " : ""}about <b>${p.walk_minutes_about} min</b> walk${p.kind ? " · " + esc(p.kind) : ""}</div>
+      <div class="tags">${yn(p.open_now, "open now", "closed now")}${yn(p.wheelchair_entrance, "♿ entrance", "♿ entrance: no")}${yn(p.wheelchair_restroom, "♿ restroom", "♿ restroom: no")}${yn(p.vegetarian, "vegetarian", "")}${yn(p.good_for_groups, "groups", "")}</div>
+      <div class="small">${p.photo && attr ? "Photo: " + attr + " · " : ""}${p.maps_uri ? `<a href="${esc(p.maps_uri)}" target="_blank" rel="noopener">Open in Google Maps</a>` : ""}</div></div>`;
+}
+function showRoute(m) {
+  S.chosen = m.place_id; S.order.forEach(renderCard); redrawPins();
+  $("qr").innerHTML = m.qr_svg; $("rname").textContent = m.name;
+  $("rmeta").textContent = `${m.travel_mode === "walking" ? "Walking" : m.travel_mode}${m.walk_minutes_about != null ? ", about " + m.walk_minutes_about + " min" : ""}`;
+  $("rlink").href = m.url; $("rlink").textContent = "Open the link";
+  $("route").hidden = false;
+  const card = $("c-" + m.place_id); if (card) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+const AGENT_IDLE = { concierge: "Listening", scout: "Waiting", navigator: "Waiting" };
+function setAgent(name, state, status) {
+  const el = $("a-" + name); if (!el) return;
+  const busy = state === "working" || state === "speaking";
+  el.classList.toggle("working", busy);
+  const text = name === "concierge" ? (state === "speaking" ? "Speaking" : "Listening") : (status || (state === "done" ? "Done" : AGENT_IDLE[name]));
+  el.querySelector(".st").textContent = text;
+}
+function caption(who, text, final) {
+  const box = $("captions");
+  let el = S.cap[who];
+  if (!el) { el = document.createElement("p"); el.className = "cap cap-" + who; box.appendChild(el); S.cap[who] = el; el.dataset.t = ""; }
+  if (final) { el.textContent = text; S.cap[who] = null; }
+  else { el.dataset.t = (el.dataset.t || "") + text; el.textContent = el.dataset.t; }
+  while (box.children.length > 3) box.removeChild(box.firstChild);
+}
+
+// ---------------------------------------------------------------- audio
+const WORKLET = `
+class Mic extends AudioWorkletProcessor {
+  constructor() { super(); this.step = sampleRate / 16000; this.pos = 0; this.out = new Int16Array(640); this.n = 0; }
+  process(inputs) {
+    const x = inputs[0] && inputs[0][0]; if (!x) return true;
+    let i = this.pos;
+    while (i < x.length) {
+      const j = Math.floor(i), f = i - j, a = x[j], b = j + 1 < x.length ? x[j + 1] : a;
+      let s = a + (b - a) * f; s = s < -1 ? -1 : s > 1 ? 1 : s;
+      this.out[this.n++] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      if (this.n === this.out.length) { this.port.postMessage(this.out.buffer.slice(0)); this.n = 0; }
+      i += this.step;
+    }
+    this.pos = i - x.length; return true;
+  }
+}
+registerProcessor("mic", Mic);`;
+
+async function startAudio() {
+  S.outCtx = new AudioContext({ sampleRate: 24000 });
+  S.outGain = S.outCtx.createGain(); S.outAnalyser = S.outCtx.createAnalyser(); S.outAnalyser.fftSize = 512;
+  S.outGain.connect(S.outAnalyser); S.outAnalyser.connect(S.outCtx.destination);
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+  S.inCtx = new AudioContext();
+  await S.inCtx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })));
+  const src = S.inCtx.createMediaStreamSource(stream);
+  const node = new AudioWorkletNode(S.inCtx, "mic");
+  S.inAnalyser = S.inCtx.createAnalyser(); S.inAnalyser.fftSize = 512;
+  src.connect(S.inAnalyser); src.connect(node);
+  node.port.onmessage = (e) => {
+    if (!S.ws || S.ws.readyState !== 1) return;
+    if (S.mode === "hold" && !S.holding) return;
+    S.ws.send(e.data);
+  };
+  S.stream = stream;
+  requestAnimationFrame(meter);
+}
+function play(buf) {
+  const pcm = new Int16Array(buf), f = new Float32Array(pcm.length);
+  for (let i = 0; i < pcm.length; i++) f[i] = pcm[i] / 32768;
+  const ab = S.outCtx.createBuffer(1, f.length, 24000); ab.copyToChannel(f, 0);
+  const src = S.outCtx.createBufferSource(); src.buffer = ab; src.connect(S.outGain);
+  const t = Math.max(S.outCtx.currentTime + 0.03, S.nextTime); src.start(t); S.nextTime = t + ab.duration;
+  S.playing.push(src); src.onended = () => { S.playing = S.playing.filter(x => x !== src); };
+}
+function flush() { S.playing.forEach(s => { try { s.stop(); } catch (e) {} }); S.playing = []; S.nextTime = 0; }
+function rms(an) { if (!an) return 0; const d = new Uint8Array(an.fftSize); an.getByteTimeDomainData(d); let s = 0; for (const v of d) { const x = (v - 128) / 128; s += x * x; } return Math.sqrt(s / d.length); }
+function meter() {
+  const out = rms(S.outAnalyser), inn = (S.mode === "hold" && !S.holding) ? 0 : rms(S.inAnalyser);
+  const lvl = Math.min(1, Math.max(out * 4, inn * 3));
+  $("orb").style.boxShadow = `0 0 0 ${Math.round(lvl * 22)}px rgba(243,169,68,${0.15 + lvl * 0.35})`;
+  if (S.ws) requestAnimationFrame(meter);
+}
+
+// ---------------------------------------------------------------- start / stop
+async function start() {
+  $("start").disabled = true;
+  S.mode = $("holdmode").checked ? "hold" : "auto";
+  try { await startAudio(); } catch (e) { toast("Microphone: " + e.message + ". You can still type below."); }
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.binaryType = "arraybuffer"; S.ws = ws;
+  ws.onopen = () => ws.send(JSON.stringify({ type: "start", mode: S.mode, city: $("city").value }));
+  ws.onmessage = (e) => { if (e.data instanceof ArrayBuffer) play(e.data); else handle(JSON.parse(e.data)); };
+  ws.onclose = () => { $("state").textContent = "Stopped. Press Start to go again."; $("orb").classList.remove("on"); reset(); };
+  ws.onerror = () => toast("Lost the connection to the server.");
+  $("start").hidden = true; $("stop").hidden = false;
+  $("hold").classList.toggle("show", S.mode === "hold");
+  if (!S.outCtx) $("state").textContent = "Connecting…";
+}
+function reset() {
+  flush(); S.ws = null;
+  if (S.stream) S.stream.getTracks().forEach(t => t.stop());
+  [S.inCtx, S.outCtx].forEach(c => { try { c && c.close(); } catch (e) {} });
+  S.inCtx = S.outCtx = null;
+  $("start").hidden = false; $("start").disabled = false; $("stop").hidden = true; $("hold").classList.remove("show");
+}
+function stop() { if (S.ws) { try { S.ws.send(JSON.stringify({ type: "stop" })); } catch (e) {} S.ws.close(); } }
+function holdDown(e) { e.preventDefault(); if (!S.ws || S.holding) return; S.holding = true; flush(); $("hold").classList.add("down"); S.ws.send(JSON.stringify({ type: "activity_start" })); }
+function holdUp(e) { if (!S.holding) return; S.holding = false; $("hold").classList.remove("down"); if (S.ws) S.ws.send(JSON.stringify({ type: "activity_end" })); }
+
+$("start").addEventListener("click", start);
+$("stop").addEventListener("click", stop);
+$("hold").addEventListener("pointerdown", holdDown);
+["pointerup", "pointerleave", "pointercancel"].forEach(ev => $("hold").addEventListener(ev, holdUp));
+$("typed").addEventListener("submit", (e) => {
+  e.preventDefault(); const t = $("typedtext").value.trim();
+  if (!t || !S.ws || S.ws.readyState !== 1) { if (!S.ws) toast("Press Start first."); return; }
+  flush(); S.ws.send(JSON.stringify({ type: "text", text: t })); $("typedtext").value = "";
+});
+boot();
+</script>
+</body>
+</html>

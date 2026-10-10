@@ -42,6 +42,7 @@ VERTEX_TEXT_LOCATION = _get("A4I_VERTEX_TEXT_LOCATION", "global")    # the speci
 GEMINI_API_KEY = _get("GOOGLE_API_KEY")
 MAPS_SERVER_KEY = _get("MAPS_SERVER_KEY")
 MAPS_BROWSER_KEY = _get("MAPS_BROWSER_KEY")
+MAPS_MAP_ID = _get("A4I_MAPS_MAP_ID", "DEMO_MAP_ID")   # a Map ID for the page's map (advanced markers need one)
 PROJECT = _get("GOOGLE_CLOUD_PROJECT")
 
 LANDMARKS = {

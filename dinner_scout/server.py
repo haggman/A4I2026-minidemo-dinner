@@ -70,7 +70,8 @@ async def index():
 
 @app.get("/api/config")
 async def page_config():
-    return JSONResponse({"maps_browser_key": config.MAPS_BROWSER_KEY, "default_city": config.DEFAULT_CITY,
+    return JSONResponse({"maps_browser_key": config.MAPS_BROWSER_KEY, "map_id": config.MAPS_MAP_ID,
+                         "default_city": config.DEFAULT_CITY,
                          "cities": list(config.LANDMARKS), "voice": config.VOICE, "live_model": config.LIVE_MODEL})
 
 
