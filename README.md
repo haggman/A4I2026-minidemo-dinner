@@ -13,7 +13,7 @@ Behind it is a small team of agents built with the Agent Development Kit (ADK):
 - **Navigator** (Gemini 3.8 Flash + Google Maps links): turns your pick into directions and a QR code.
 
 > **Status (2026-10-09): built, not yet run against Google.** The agents, the server and the page are done and
-> pass the offline harness (23/23). Next: a real conversation in Cloud Shell, then the rehearsal kit.
+> pass the offline harness (25/25). Next: a real conversation in Cloud Shell, then the rehearsal kit.
 
 ## Run it in Cloud Shell
 
@@ -30,7 +30,9 @@ source scripts/activate.sh
 bash scripts/run.sh
 ```
 
-Then **Web Preview > Preview on port 8080**, press **Start**, allow the microphone, and talk. Use a headset or a
+Then **Web Preview > Preview on port 8080**, press **Start**, allow the location and the microphone, and talk. The
+search starts where the browser is (on stage, the venue); if the location is refused it starts at the city in
+`demo.env`, and you can always just say where you are. Use a headset or a
 handheld mic: speakers feeding the mic make the voice interrupt itself. If the room fights back, tick **Hold to
 talk** before Start and hold the button while you speak. The box at the bottom takes typed turns as a rehearsal
 backup, and **First word** shows how long the voice took to start answering.

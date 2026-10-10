@@ -153,3 +153,28 @@ def card(place: dict, origin_lat: float, origin_lng: float, walk_m_per_min: floa
                                for a in (first.get("authorAttributions") or [])],
     })
     return row
+
+
+NEARBY_URL = "https://places.googleapis.com/v1/places:searchNearby"
+NEAREST_FIELDS = ("places.displayName,places.shortFormattedAddress,places.utcOffsetMinutes,"
+                  "places.addressComponents")
+
+
+async def nearest_place(client: httpx.AsyncClient, key: str, lat: float, lng: float, radius_m: float = 150,
+                        language: str = "en") -> dict:
+    """Name the spot nearest to a pair of coordinates (the browser's location): the closest place's name, its
+    short address, the city and the UTC offset. Nearby Search (New), ranked by distance; Pro tier fields only.
+    Checked against https://developers.google.com/maps/documentation/places/web-service/nearby-search 2026-10-09."""
+    body = {"locationRestriction": {"circle": {"center": {"latitude": lat, "longitude": lng}, "radius": float(radius_m)}},
+            "maxResultCount": 1, "rankPreference": "DISTANCE", "languageCode": language}
+    r = await client.post(NEARBY_URL, json=body, headers={
+        "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": NEAREST_FIELDS})
+    if r.status_code != 200:
+        raise PlacesError(f"HTTP {r.status_code}: {r.text[:300]}")
+    found = (r.json().get("places") or [])
+    if not found:
+        return {"name": "", "address": "", "city": "", "utc_offset_min": None}
+    p = found[0]
+    city = next((c.get("longText", "") for c in p.get("addressComponents") or [] if "locality" in (c.get("types") or [])), "")
+    return {"name": (p.get("displayName") or {}).get("text", ""), "address": p.get("shortFormattedAddress", ""),
+            "city": city, "utc_offset_min": p.get("utcOffsetMinutes")}

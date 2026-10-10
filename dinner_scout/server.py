@@ -8,7 +8,8 @@ stay server-side. One process, one worker: each page's live session and stage li
 
 The page's WebSocket (/ws) protocol:
   page -> server   binary frames: 16-bit PCM mono at 16 kHz from the mic
-                   {"type": "start", "mode": "auto"|"hold", "city": "Toronto"}   once, first
+                   {"type": "start", "mode": "auto"|"hold", "lat": .., "lng": ..}  once, first; lat/lng
+                                     from the browser, or "city" (else A4I_DEFAULT_CITY) if location was refused
                    {"type": "text", "text": "..."}                               a typed turn (rehearsal backup)
                    {"type": "activity_start"} / {"type": "activity_end"}        hold-to-talk (mode "hold" only)
                    {"type": "stop"}
@@ -134,7 +135,10 @@ async def ws_endpoint(ws: WebSocket):
             return
         mode = "hold" if start.get("mode") == "hold" else "auto"
         try:
-            await tools.locate(st, city=start.get("city") or config.DEFAULT_CITY)
+            if isinstance(start.get("lat"), (int, float)) and isinstance(start.get("lng"), (int, float)):
+                await tools.locate_at(st, float(start["lat"]), float(start["lng"]))     # the browser's location
+            else:
+                await tools.locate(st, city=start.get("city") or config.DEFAULT_CITY)     # fallback: demo.env
         except Exception as e:
             st.emit({"type": "error", "message": f"Couldn't place the map: {e}"})
         r = runner()

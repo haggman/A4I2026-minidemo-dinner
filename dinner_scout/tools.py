@@ -61,6 +61,37 @@ async def locate(st: stages.Stage, near: str = "", city: str = "") -> dict:
     return lm
 
 
+async def locate_at(st: stages.Stage, lat: float, lng: float) -> dict:
+    """Start from the browser's own location: search around the exact coordinates, and name the nearest place so
+    the voice (and the map label) can say where that is."""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            near = await places.nearest_place(client, config.MAPS_SERVER_KEY, lat, lng)
+    except Exception as e:
+        log.warning("nearest place failed: %s", e)
+        near = {"name": "", "address": "", "city": "", "utc_offset_min": None}
+    lm = {"id": None, "name": near["name"] or "your location", "address": near["address"], "lat": lat, "lng": lng,
+          "utc_offset_min": near["utc_offset_min"]}
+    st.landmark = lm
+    st.city = near["city"] or st.city
+    st.emit({"type": "location", "name": lm["name"], "address": lm["address"], "lat": lat, "lng": lng,
+             "label": "you are here", "local_time": local_time(lm.get("utc_offset_min")), "from_browser": True})
+    return lm
+
+
+async def _same_city(st: stages.Stage, city: str) -> bool:
+    """Is the named city where we already are (within about 30 km)? Then a city mention keeps the exact spot."""
+    if city_key(city) and city_key(city) == city_key(st.city):
+        return True
+    key = city_key(city)
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            c = await places.find_landmark(client, config.MAPS_SERVER_KEY, config.LANDMARKS[key] if key else city)
+    except Exception:
+        return False
+    return places.metres_between(st.landmark["lat"], st.landmark["lng"], c["lat"], c["lng"]) < 30000
+
+
 async def note_preferences(tool_context: ToolContext, near: str = "", city: str = "", cuisine: str = "",
                            walk_minutes: int = 0, budget: str = "", avoid: str = "", must_have: str = "",
                            party: str = "") -> dict:
@@ -84,10 +115,14 @@ async def note_preferences(tool_context: ToolContext, near: str = "", city: str 
              "avoid": avoid, "must_have": must_have, "party": party}
     given = {k: v for k, v in given.items() if v}
     result: dict = {"noted": True}
-    moved = (near and near != st.prefs.get("near")) or (city and city != st.prefs.get("city"))
+    new_near = bool(near) and near != st.prefs.get("near")
+    new_city = bool(city) and city != st.prefs.get("city")
     st.prefs.update(given)
     st.emit({"type": "prefs", "prefs": dict(st.prefs)})
-    if moved or st.landmark is None:
+    if new_city and not new_near and st.landmark is not None and await _same_city(st, city):
+        st.city = city                                # "I'm in Toronto" when the browser already put us there
+        new_city = False
+    if new_near or new_city or st.landmark is None:
         try:
             lm = await locate(st, near=st.prefs.get("near", ""), city=st.prefs.get("city", ""))
             result.update(searching_around=lm["name"], local_time=local_time(lm.get("utc_offset_min")))

@@ -66,6 +66,14 @@ async def fake_search_dinner(client, key, query, lat, lng, **kw):
             _place("p-joey", "JOEY King St", 0.005, 4.6, "PRICE_LEVEL_MODERATE")]
 
 
+VENUE = {"lat": 43.6439, "lng": -79.3861}           # where the browser says we are (the venue)
+
+
+async def fake_nearest_place(client, key, lat, lng, radius_m=150, language="en"):
+    return {"name": "Metro Toronto Convention Centre", "address": "255 Front St W", "city": "Toronto",
+            "utc_offset_min": -240}
+
+
 async def fake_photo_uri(client, key, photo_name, max_width=480):
     return f"https://lh3.googleusercontent.com/fake/{photo_name.split('/')[1]}"
 
@@ -73,6 +81,7 @@ async def fake_photo_uri(client, key, photo_name, max_width=480):
 places.find_landmark = fake_find_landmark
 places.search_dinner = fake_search_dinner
 places.photo_uri = fake_photo_uri
+places.nearest_place = fake_nearest_place
 
 
 # ---- Flash stand-in (the Scout and the Navigator) ------------------------------------------------------------
@@ -152,7 +161,7 @@ class FakeLive(BaseLlmConnection):
         text = p.text or ""
         LIVE_HEARD.append("text:" + text[:40])
         if "dinner" in text:
-            self.push(call("note_preferences", near="Union Station", city="Toronto", walk_minutes=15), DONE)
+            self.push(call("note_preferences", city="Toronto", walk_minutes=15), DONE)
         elif "Edna" in text:
             self.push(audio("Great choice. Let me get you directions."), call("navigator", request="Edna + Vita"), DONE)
         elif "interrupt" in text:
@@ -224,9 +233,11 @@ async def main() -> int:
         def of(kind, **match):
             return [e for e in events if e.get("type") == kind and all(e.get(k) == v for k, v in match.items())]
 
-        await ws.send(json.dumps({"type": "start", "mode": "auto", "city": "Toronto"}))
+        await ws.send(json.dumps({"type": "start", "mode": "auto", **VENUE}))
         check("ready", await until(lambda: of("ready")))
-        check("map placed on the city's landmark", bool(of("location")) and of("location")[0]["name"] == "Union Station")
+        loc = of("location")[0] if of("location") else {}
+        check("map starts at the browser's location, named by the nearest place",
+              loc.get("name") == "Metro Toronto Convention Centre" and loc.get("lat") == VENUE["lat"], str(loc)[:120])
 
         # Turn 1: dinner. note_preferences -> speak first -> Scout in the background -> results spoken.
         await ws.send(json.dumps({"type": "text", "text": "I'm in Toronto, it's dinner time, find me something to eat."}))
@@ -235,6 +246,8 @@ async def main() -> int:
         prefs = of("prefs")
         check("preferences strip filled", bool(prefs) and prefs[-1]["prefs"].get("walk_minutes") == 15,
               json.dumps(prefs[-1]["prefs"]) if prefs else "none")
+        check("saying the city we're already in keeps the exact spot",
+              len(of("location")) == 1 and not LOOKED_UP, f"{len(of('location'))} location events; looked up {LOOKED_UP}")
         cards = of("places")
         names = [p["name"] for p in cards[-1]["places"]] if cards else []
         check("cards and pins, the too-far place filtered out", names and "Too Far Away Bistro" not in names, str(names))
@@ -289,6 +302,19 @@ async def main() -> int:
 
         await ws.send(json.dumps({"type": "stop"}))
         rd.cancel()
+
+    # No location from the browser (refused or slow): the page starts on the default city's landmark.
+    async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws", max_size=None) as ws2:
+        await ws2.send(json.dumps({"type": "start", "mode": "hold"}))
+        first = None
+        for _ in range(10):
+            m = json.loads(await asyncio.wait_for(ws2.recv(), 5))
+            if m.get("type") == "location":
+                first = m
+                break
+        check("without the browser's location, the default city's landmark", bool(first) and first["name"] == "Union Station",
+              str(first)[:100])
+        await ws2.send(json.dumps({"type": "stop"}))
     srv.should_exit = True
     await serve
     fails = [r for r in RESULTS if not r[1]]

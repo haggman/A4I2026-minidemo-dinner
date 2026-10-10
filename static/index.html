@@ -32,8 +32,8 @@
 html, body { height: 100%; }
 body { margin: 0; background: var(--ink); color: var(--text); font-family: var(--body); font-size: 18px; line-height: 1.4; }
 button, input, select { font: inherit; color: inherit; }
-.app { height: 100%; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(380px, 1fr); }
-@media (max-width: 900px) { .app { grid-template-columns: 1fr; height: auto; } .mapwrap { height: 55vh; } }
+.app { height: 100%; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(380px, 1fr); grid-template-rows: minmax(0, 1fr); }
+@media (max-width: 900px) { .app { grid-template-columns: 1fr; grid-template-rows: auto; height: auto; } .mapwrap { height: 55vh; } }
 
 /* ---- map side ---- */
 .mapwrap { position: relative; min-width: 0; background: #0b1019; }
@@ -51,11 +51,11 @@ button, input, select { font: inherit; color: inherit; }
 .chip i { font-style: normal; color: var(--muted); margin-right: 5px; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
 @keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
 
-.route { position: absolute; left: 18px; bottom: 44px; display: flex; gap: 18px; align-items: center; background: rgba(14,19,32,.94);
+.route { position: absolute; top: 64px; right: 18px; display: flex; gap: 18px; align-items: center; background: rgba(14,19,32,.94);
   border: 1px solid var(--nav); border-radius: 16px; padding: 16px 20px 16px 16px; max-width: calc(100% - 36px); box-shadow: 0 18px 50px rgba(0,0,0,.5);
   animation: rise .5s ease-out; }
-@keyframes rise { from { transform: translateY(30px); opacity: 0; } to { transform: none; opacity: 1; } }
-.qr { width: 190px; height: 190px; background: #fff; border-radius: 10px; padding: 8px; flex: none; }
+@keyframes rise { from { transform: translateY(-20px) scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
+.qr { width: 220px; height: 220px; background: #fff; border-radius: 10px; padding: 8px; flex: none; }
 .qr svg { width: 100%; height: 100%; display: block; }
 .route h3 { margin: 0 0 4px; font-family: var(--display); font-size: 1.8rem; line-height: 1.1; text-wrap: balance; }
 .route p { margin: 0; color: var(--muted); }
@@ -63,8 +63,9 @@ button, input, select { font: inherit; color: inherit; }
 .route a { color: var(--muted); font-size: .85rem; word-break: break-all; }
 
 /* ---- right column ---- */
-.side { display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr) auto; min-width: 0; border-left: 1px solid var(--line); }
-@media (max-width: 900px) { .side { border-left: 0; } .qr { width: 130px; height: 130px; } .route h3 { font-size: 1.3rem; } }
+.side { display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; border-left: 1px solid var(--line); }
+@media (max-width: 900px) { .side { border-left: 0; } .route { position: fixed; top: auto; right: 12px; left: 12px; bottom: 12px; z-index: 5; }
+  .qr { width: 130px; height: 130px; } .route h3 { font-size: 1.3rem; } }
 .top { display: flex; align-items: center; gap: 14px; padding: 16px 18px 10px; }
 .orb { width: 64px; height: 64px; border-radius: 50%; flex: none; position: relative; background: radial-gradient(circle at 40% 35%, #ffd08a, var(--lamp) 45%, #7a4a12);
   box-shadow: 0 0 0 0 rgba(243,169,68,.0); transition: box-shadow .08s linear, filter .2s; filter: saturate(.35) brightness(.6); }
@@ -140,7 +141,7 @@ button, input, select { font: inherit; color: inherit; }
   <section class="mapwrap" aria-label="Map">
     <div id="map"></div>
     <div class="nomap" id="nomap"><div><b>Map</b>The Google map appears here once a browser key (MAPS_BROWSER_KEY) is in keys.env.<div class="pins" id="nopins"></div></div></div>
-    <div class="where"><span class="here" id="here">Where are you?</span><span id="chips"></span></div>
+    <div class="where"><span class="here" id="here">Press Start: Dinner Scout uses this computer&#39;s location</span><span id="chips"></span></div>
     <div class="gmlogo" id="gmlogo">Google Maps</div>
     <div class="route" id="route" hidden>
       <div class="qr" id="qr" aria-label="QR code that opens Google Maps"></div>
@@ -166,7 +167,6 @@ button, input, select { font: inherit; color: inherit; }
     <div class="captions" id="captions" aria-live="polite"></div>
     <div class="cards" id="cards"><div class="empty">Restaurants show up here as the Scout finds them.</div></div>
     <div class="foot">
-      <label>City <select id="city"></select></label>
       <label><input type="checkbox" id="holdmode"> Hold to talk</label>
       <span>First word <span class="mono" id="lat">–</span></span>
       <form id="typed"><input type="text" id="typedtext" placeholder="Type instead (rehearsal backup)" aria-label="Type a message"><button class="btn" type="submit">Send</button></form>
@@ -189,8 +189,6 @@ function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;
 // ---------------------------------------------------------------- config and map
 async function boot() {
   try { S.cfg = await (await fetch("/api/config")).json(); } catch (e) { S.cfg = { cities: ["Toronto"], default_city: "Toronto" }; }
-  const sel = $("city");
-  (S.cfg.cities || []).forEach(c => { const o = document.createElement("option"); o.textContent = c; if (c === S.cfg.default_city) o.selected = true; sel.appendChild(o); });
   if (S.cfg.maps_browser_key) loadMap(S.cfg.maps_browser_key, S.cfg.map_id || "DEMO_MAP_ID");
 }
 function loadMap(key, mapId) {
@@ -357,16 +355,28 @@ async function start() {
   $("start").disabled = true;
   S.mode = $("holdmode").checked ? "hold" : "auto";
   try { await startAudio(); } catch (e) { toast("Microphone: " + e.message + ". You can still type below."); }
+  $("state").textContent = "Finding where you are…";
+  const where = await whereAmI();
+  if (!where) toast(`Couldn't get this computer's location, so starting near ${S.cfg.default_city || "the default city"}. You can also just say where you are.`);
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws`);
   ws.binaryType = "arraybuffer"; S.ws = ws;
-  ws.onopen = () => ws.send(JSON.stringify({ type: "start", mode: S.mode, city: $("city").value }));
+  ws.onopen = () => ws.send(JSON.stringify(Object.assign({ type: "start", mode: S.mode }, where || {})));
   ws.onmessage = (e) => { if (e.data instanceof ArrayBuffer) play(e.data); else handle(JSON.parse(e.data)); };
   ws.onclose = () => { $("state").textContent = "Stopped. Press Start to go again."; $("orb").classList.remove("on"); reset(); };
   ws.onerror = () => toast("Lost the connection to the server.");
   $("start").hidden = true; $("stop").hidden = false;
   $("hold").classList.toggle("show", S.mode === "hold");
   if (!S.outCtx) $("state").textContent = "Connecting…";
+}
+function whereAmI() {
+  // The browser's own location (the venue's, on stage). Needs the page's permission; null if refused or slow.
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy_m: Math.round(p.coords.accuracy) }),
+      () => resolve(null), { enableHighAccuracy: true, timeout: 8000, maximumAge: 600000 });
+  });
 }
 function reset() {
   flush(); S.ws = null;
