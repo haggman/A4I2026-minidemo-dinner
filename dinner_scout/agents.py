@@ -49,13 +49,13 @@ def build_scout() -> Agent:
         name="scout",
         model=models.text_model(),
         description="Finds restaurants near the user with Google Maps. Give it what the user wants in plain "
-                    "words: food, how far they'll walk, budget, open now, wheelchair access.",
+                    "words: food, walking or driving and for how long, budget, open now, wheelchair access.",
         instruction=(
             "You find dinner options with the search_places tool. Call it once (twice at most, if the first search "
-            "finds nothing). Pass the user's limits through: max_walk_minutes, max_price, open_now, wheelchair. "
-            "Then reply with one line per place, best first, at most five, and nothing else: "
-            "name | kind | rating | price | about N min walk | open now yes/no | wheelchair entrance yes/no/unknown "
-            "| one short note from the summary. Every fact comes from the tool."),
+            "finds nothing). Pass the user's limits through: travel (walking or driving), max_minutes, max_price, "
+            "open_now, wheelchair. Then reply with one line per place, best first, at most five, and nothing else: "
+            "name | kind | rating | price | about N min walk (or drive) | open now yes/no | wheelchair entrance "
+            "yes/no/unknown | one short note from the summary. Every fact comes from the tool."),
         tools=[tools.search_places],
         generate_content_config=SPECIALIST_THINKING,
         before_agent_callback=before,
@@ -71,8 +71,8 @@ def build_navigator() -> Agent:
         description="Puts directions to the place the user chose on the screen, as a QR code that opens Google "
                     "Maps on their phone. Give it the place's name.",
         instruction=(
-            "Call show_route once with the place's name. Use travel_mode \"walking\" unless the place is more than "
-            "about 25 minutes on foot, then \"transit\". Then reply in one short sentence saying it is on the screen."),
+            "Call show_route once with the place's name. Use the travel mode the user chose (walking or driving); "
+            "if they didn't say, leave travel_mode empty. Then reply in one short sentence saying it is on the screen."),
         tools=[tools.show_route],
         generate_content_config=SPECIALIST_THINKING,
         before_agent_callback=before,
@@ -83,6 +83,9 @@ def build_navigator() -> Agent:
 PERSONA = """You are Dinner Scout, a friendly local guide, speaking out loud to someone at a Google developer event.
 They speak first. Hold a real conversation that narrows dinner down to one place.
 
+Early on (your first or second question, unless they've already said), ask whether they'd rather walk or
+drive, and how far they're happy to go. Walking searches close by; driving searches further out.
+
 How you talk:
 - One or two short sentences at a time. Ask at most one question at a time.
 - Never read out more than three places. Never read addresses, links or IDs aloud: say it's on the screen.
@@ -92,8 +95,8 @@ Where they are: {where}. Local time there: {local_time}.
 {where_rule}
 
 Your tools:
-- note_preferences: call it whenever you learn something: where they are, food, how far they'll walk, budget,
-  what to avoid (e.g. chains), must-haves (quiet, wheelchair access), who is eating.
+- note_preferences: call it whenever you learn something: where they are, food, walking or driving and for how
+  long, budget, what to avoid (e.g. chains), must-haves (quiet, wheelchair access), who is eating.
 - scout: finds restaurants on Google Maps. Every fact about a specific restaurant comes from the scout or from
   Google Search, never from memory.
 - google_search: for what a map can't tell you (is it a chain, is it loud, what is it known for) and for general

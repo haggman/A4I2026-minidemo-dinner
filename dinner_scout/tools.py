@@ -28,7 +28,7 @@ CITY_ALIASES = {
     "new york city": "New York", "nyc": "New York", "manhattan": "New York",
 }
 SKIP_STATUS = {"CLOSED_PERMANENTLY", "CLOSED_TEMPORARILY"}
-TERSE = ("name", "kind", "rating", "price", "walk_minutes_about", "open_now", "wheelchair_entrance",
+TERSE = ("name", "kind", "rating", "price", "minutes_about", "travel", "open_now", "wheelchair_entrance",
          "wheelchair_restroom", "wheelchair_seating", "vegetarian", "good_for_groups", "summary")
 
 
@@ -92,9 +92,19 @@ async def _same_city(st: stages.Stage, city: str) -> bool:
     return places.metres_between(st.landmark["lat"], st.landmark["lng"], c["lat"], c["lng"]) < 30000
 
 
+def travel_of(text: str) -> str:
+    """"walking" or "driving" from whatever the model or the user said ("walk", "drive", "car", "taxi")."""
+    t = (text or "").lower()
+    if any(w in t for w in ("driv", "car", "taxi", "uber", "ride")):
+        return "driving"
+    if "transit" in t or "subway" in t or "bus" in t or "train" in t:
+        return "transit"
+    return "walking"
+
+
 async def note_preferences(tool_context: ToolContext, near: str = "", city: str = "", cuisine: str = "",
-                           walk_minutes: int = 0, budget: str = "", avoid: str = "", must_have: str = "",
-                           party: str = "") -> dict:
+                           travel: str = "", max_minutes: int = 0, budget: str = "", avoid: str = "",
+                           must_have: str = "", party: str = "") -> dict:
     """Record what the user has told you, as soon as you learn it, including where they are.
 
     Args:
@@ -102,7 +112,8 @@ async def note_preferences(tool_context: ToolContext, near: str = "", city: str 
         "the convention centre"). The map moves there and the scout searches around it.
       city: the city they are in.
       cuisine: food they want, or "anything".
-      walk_minutes: how far they will walk, in minutes.
+      travel: how they'll get there: "walking" or "driving".
+      max_minutes: how long they're willing to walk or drive, in minutes.
       budget: "$", "$$", "$$$" or "$$$$".
       avoid: what to avoid, e.g. "chains", "loud places".
       must_have: e.g. "wheelchair accessible", "quiet enough to talk", "vegetarian options".
@@ -111,8 +122,8 @@ async def note_preferences(tool_context: ToolContext, near: str = "", city: str 
     st = stages.of(tool_context.state)
     if st is None:
         return {"noted": False, "error": "no page is connected"}
-    given = {"near": near, "city": city, "cuisine": cuisine, "walk_minutes": walk_minutes, "budget": budget,
-             "avoid": avoid, "must_have": must_have, "party": party}
+    given = {"near": near, "city": city, "cuisine": cuisine, "travel": travel_of(travel) if travel else "",
+             "max_minutes": max_minutes, "budget": budget, "avoid": avoid, "must_have": must_have, "party": party}
     given = {k: v for k, v in given.items() if v}
     result: dict = {"noted": True}
     new_near = bool(near) and near != st.prefs.get("near")
@@ -148,15 +159,16 @@ async def _photos(st: stages.Stage, cards: list[dict]) -> None:
         await asyncio.gather(*(one(c) for c in cards))
 
 
-async def search_places(tool_context: ToolContext, query: str, open_now: bool = False, max_price: int = 0,
-                        max_walk_minutes: int = 15, wheelchair: bool = False) -> dict:
+async def search_places(tool_context: ToolContext, query: str, travel: str = "", max_minutes: int = 0,
+                        open_now: bool = False, max_price: int = 0, wheelchair: bool = False) -> dict:
     """Find restaurants around where the user is. The results also appear on the screen as cards and pins.
 
     Args:
       query: what to look for, in plain words, e.g. "thai restaurant", "quiet independent restaurant".
+      travel: "walking" or "driving" (if unsure, leave it empty: the user's stated choice is used).
+      max_minutes: leave out anything further than this many minutes away (0: 15 on foot, 10 by car).
       open_now: only places open right now.
       max_price: 1 to 4 ($ to $$$$); 0 for any price.
-      max_walk_minutes: leave out anything further than this on foot.
       wheelchair: only places with a wheelchair-accessible entrance.
     """
     st = stages.of(tool_context.state)
@@ -165,14 +177,19 @@ async def search_places(tool_context: ToolContext, query: str, open_now: bool = 
     if st.landmark is None:
         await locate(st, city=st.prefs.get("city", ""))
     lm = st.landmark
-    st.agent("scout", "working", f"Searching: {query}")
+    mode = "driving" if travel_of(travel or st.prefs.get("travel", "")) == "driving" else "walking"
+    limit = max_minutes or st.prefs.get("max_minutes") or (10 if mode == "driving" else 15)
+    radius, pace = ((config.DRIVE_RADIUS_M, config.DRIVE_M_PER_MIN) if mode == "driving"
+                    else (config.SEARCH_RADIUS_M, config.WALK_M_PER_MIN))
+    how = "drive" if mode == "driving" else "walk"
+    st.agent("scout", "working", f"Searching: {query} ({how})")
     async with httpx.AsyncClient(timeout=15) as client:
         found = await places.search_dinner(client, config.MAPS_SERVER_KEY, query, lm["lat"], lm["lng"],
-                                           radius_m=config.SEARCH_RADIUS_M, open_now=open_now,
+                                           radius_m=radius, open_now=open_now,
                                            max_price=max_price or None, page_size=15)
-    cards = [places.card(p, lm["lat"], lm["lng"], config.WALK_M_PER_MIN) for p in found
+    cards = [places.card(p, lm["lat"], lm["lng"], pace, mode) for p in found
              if p.get("businessStatus") not in SKIP_STATUS]
-    cards = [c for c in cards if c["walk_minutes_about"] <= max_walk_minutes]
+    cards = [c for c in cards if c["minutes_about"] <= limit]
     if wheelchair:
         cards = [c for c in cards if c.get("wheelchair_entrance") is True]
     cards = cards[:6]
@@ -180,13 +197,13 @@ async def search_places(tool_context: ToolContext, query: str, open_now: bool = 
         st.places[c["place_id"]] = c
     st.emit({"type": "places", "query": query, "places": cards,
              "center": {"lat": lm["lat"], "lng": lm["lng"], "name": lm["name"]}})
-    st.agent("scout", "working", f"{len(cards)} places within {max_walk_minutes} minutes' walk")
+    st.agent("scout", "working", f"{len(cards)} places within about {limit} minutes' {how}")
     if cards:
         asyncio.get_running_loop().create_task(_photos(st, cards))
     rows = [{k: c.get(k) for k in TERSE} for c in cards]
     if not rows:
-        return {"places": [], "note": f"Nothing matched within {max_walk_minutes} minutes' walk. Try a broader "
-                                      "query or a longer walk."}
+        return {"places": [], "note": f"Nothing matched within about {limit} minutes' {how}. Try a broader "
+                                      f"query or a longer {how}."}
     return {"places": rows}
 
 
@@ -204,12 +221,12 @@ def _find(st: stages.Stage, place: str) -> Optional[dict]:
     return names[close[0]] if close else None
 
 
-def show_route(tool_context: ToolContext, place: str, travel_mode: str = "walking") -> dict:
+def show_route(tool_context: ToolContext, place: str, travel_mode: str = "") -> dict:
     """Put directions to the chosen place on the screen as a QR code that opens Google Maps on a phone.
 
     Args:
       place: the name of the chosen place, as the scout reported it.
-      travel_mode: "walking" (the default), or "transit" if it is more than about 25 minutes on foot.
+      travel_mode: "walking", "driving" or "transit". Leave it empty to use how the user said they'd get there.
     """
     st = stages.of(tool_context.state)
     if st is None:
@@ -218,10 +235,10 @@ def show_route(tool_context: ToolContext, place: str, travel_mode: str = "walkin
     if c is None:
         return {"ok": False, "error": f"No place called {place!r} on screen.",
                 "on_screen": [x["name"] for x in st.places.values()]}
+    travel_mode = travel_of(travel_mode or st.prefs.get("travel") or c.get("travel", "walking"))
     url = maps_links.directions_url(c["name"], c["place_id"], travel_mode)
     st.chosen = c["place_id"]
     st.emit({"type": "route", "place_id": c["place_id"], "name": c["name"], "url": url,
              "qr_svg": maps_links.qr_svg(url), "travel_mode": travel_mode,
-             "walk_minutes_about": c.get("walk_minutes_about"), "maps_uri": c.get("maps_uri")})
-    return {"ok": True, "name": c["name"], "travel_mode": travel_mode,
-            "walk_minutes_about": c.get("walk_minutes_about")}
+             "minutes_about": c.get("minutes_about"), "maps_uri": c.get("maps_uri")})
+    return {"ok": True, "name": c["name"], "travel_mode": travel_mode, "minutes_about": c.get("minutes_about")}

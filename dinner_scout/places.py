@@ -95,8 +95,9 @@ def metres_between(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
-def compact(place: dict, origin_lat: float, origin_lng: float, walk_m_per_min: float = 80) -> dict:
-    """What a model needs to talk about one place: short, no addresses or links to read aloud."""
+def compact(place: dict, origin_lat: float, origin_lng: float, m_per_min: float = 80, travel: str = "walking") -> dict:
+    """What a model needs to talk about one place: short, no addresses or links to read aloud. Minutes are
+    straight-line distance at the given pace, so always "about": walking ~80 m/min, driving in a city ~400 m/min."""
     loc = place.get("location") or {}
     metres = metres_between(origin_lat, origin_lng, loc.get("latitude", origin_lat), loc.get("longitude", origin_lng))
     access = place.get("accessibilityOptions") or {}
@@ -108,7 +109,9 @@ def compact(place: dict, origin_lat: float, origin_lng: float, walk_m_per_min: f
         "rating": place.get("rating"),
         "ratings": place.get("userRatingCount"),
         "price": PRICE_SIGNS.get(place.get("priceLevel", ""), None),
-        "walk_minutes_about": round(metres / walk_m_per_min),
+        "minutes_about": max(1, round(metres / m_per_min)),
+        "travel": travel,
+        "walk_minutes_about": round(metres / m_per_min) if travel == "walking" else None,
         "open_now": hours.get("openNow"),
         "wheelchair_entrance": access.get("wheelchairAccessibleEntrance"),
         "wheelchair_restroom": access.get("wheelchairAccessibleRestroom"),
@@ -133,10 +136,10 @@ async def photo_uri(client: httpx.AsyncClient, key: str, photo_name: str, max_wi
     return r.json().get("photoUri")
 
 
-def card(place: dict, origin_lat: float, origin_lng: float, walk_m_per_min: float = 80) -> dict:
+def card(place: dict, origin_lat: float, origin_lng: float, m_per_min: float = 80, travel: str = "walking") -> dict:
     """Everything the page shows for one place: the compact row plus what only the screen needs (the address,
     the Google Maps link, the pin, the first photo's name and its author attributions)."""
-    row = compact(place, origin_lat, origin_lng, walk_m_per_min)
+    row = compact(place, origin_lat, origin_lng, m_per_min, travel)
     loc = place.get("location") or {}
     access = place.get("accessibilityOptions") or {}
     photos = place.get("photos") or []

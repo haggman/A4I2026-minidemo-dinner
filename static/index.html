@@ -264,10 +264,11 @@ function handle(m) {
     case "error": toast(m.message); break;
   }
 }
-const PREF_LABELS = { near: "near", city: "city", cuisine: "food", walk_minutes: "walk", budget: "budget", avoid: "avoid", must_have: "must", party: "who" };
+const PREF_LABELS = { near: "near", city: "city", cuisine: "food", travel: "going", max_minutes: "up to", budget: "budget", avoid: "avoid", must_have: "must", party: "who" };
+const TRAVEL_WORD = { walking: "on foot", driving: "by car", transit: "by transit" };
 function renderPrefs(p) {
   $("chips").innerHTML = Object.entries(p).filter(([k]) => k !== "near" && k !== "city")
-    .map(([k, v]) => `<span class="chip"><i>${esc(PREF_LABELS[k] || k)}</i>${esc(k === "walk_minutes" ? v + " min" : v)}</span>`).join(" ");
+    .map(([k, v]) => `<span class="chip"><i>${esc(PREF_LABELS[k] || k)}</i>${esc(k === "max_minutes" ? v + " min" : k === "travel" ? (TRAVEL_WORD[v] || v) : v)}</span>`).join(" ");
 }
 function renderPlaces(list) {
   S.places = {}; S.order = []; S.chosen = null; $("route").hidden = true;
@@ -284,14 +285,15 @@ function renderCard(id) {
   d.className = "card" + (id === S.chosen ? " chosen" : "");
   d.innerHTML = `<div class="ph">${p.photo ? `<img src="${esc(p.photo)}" alt="" onerror="this.remove()">` : ""}<span class="num">${i}</span></div>
     <div style="min-width:0"><h4>${esc(p.name)}</h4>
-      <div class="meta">${p.rating ? `<b>${p.rating}★</b> (${(p.ratings || 0).toLocaleString()}) · ` : ""}${p.price ? esc(p.price) + " · " : ""}about <b>${p.walk_minutes_about} min</b> walk${p.kind ? " · " + esc(p.kind) : ""}</div>
+      <div class="meta">${p.rating ? `<b>${p.rating}★</b> (${(p.ratings || 0).toLocaleString()}) · ` : ""}${p.price ? esc(p.price) + " · " : ""}about <b>${p.minutes_about} min</b> ${p.travel === "driving" ? "drive" : "walk"}${p.kind ? " · " + esc(p.kind) : ""}</div>
       <div class="tags">${yn(p.open_now, "open now", "closed now")}${yn(p.wheelchair_entrance, "♿ entrance", "♿ entrance: no")}${yn(p.wheelchair_restroom, "♿ restroom", "♿ restroom: no")}${yn(p.vegetarian, "vegetarian", "")}${yn(p.good_for_groups, "groups", "")}</div>
       <div class="small">${p.photo && attr ? "Photo: " + attr + " · " : ""}${p.maps_uri ? `<a href="${esc(p.maps_uri)}" target="_blank" rel="noopener">Open in Google Maps</a>` : ""}</div></div>`;
 }
 function showRoute(m) {
   S.chosen = m.place_id; S.order.forEach(renderCard); redrawPins();
   $("qr").innerHTML = m.qr_svg; $("rname").textContent = m.name;
-  $("rmeta").textContent = `${m.travel_mode === "walking" ? "Walking" : m.travel_mode}${m.walk_minutes_about != null ? ", about " + m.walk_minutes_about + " min" : ""}`;
+  const mode = { walking: "Walking", driving: "Driving", transit: "Transit" }[m.travel_mode] || m.travel_mode;
+  $("rmeta").textContent = `${mode}${m.minutes_about != null ? ", about " + m.minutes_about + " min" : ""}`;
   $("rlink").href = m.url; $("rlink").textContent = "Open the link";
   $("route").hidden = false;
   const card = $("c-" + m.place_id); if (card) card.scrollIntoView({ behavior: "smooth", block: "nearest" });

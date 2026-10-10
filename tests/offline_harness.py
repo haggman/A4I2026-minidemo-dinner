@@ -59,7 +59,11 @@ def _place(pid, name, dlat, rating, price, wheel=True):
                                                                                   "uri": "https://maps.google.com/contrib/1"}]}]}
 
 
+SEARCHES: list[dict] = []
+
+
 async def fake_search_dinner(client, key, query, lat, lng, **kw):
+    SEARCHES.append(dict(kw, query=query))
     return [_place("p-edna", "Edna + Vita", 0.004, 4.8, "PRICE_LEVEL_MODERATE"),
             _place("p-fred", "The Frederick", 0.006, 4.8, "PRICE_LEVEL_EXPENSIVE", wheel=None),
             _place("p-far", "Too Far Away Bistro", 0.09, 4.9, "PRICE_LEVEL_MODERATE"),      # ~125 min: filtered
@@ -95,9 +99,11 @@ async def fake_generate(self, llm_request, stream=False):
     await asyncio.sleep(0.3)                      # a specialist takes a moment; the voice must not wait silently
     if "search_places" in names:
         SPECIALIST_CALLS.append("scout:" + ("answer" if answered else "call"))
+        asked = " ".join(p.text or "" for c in llm_request.contents for p in (c.parts or []) if c.role == "user")
+        args = ({"query": "dinner", "travel": "driving", "max_minutes": 10} if "driv" in asked
+                else {"query": "dinner", "max_minutes": 15})
         if not answered:
-            part = types.Part(function_call=types.FunctionCall(id="s1", name="search_places",
-                                                               args={"query": "dinner", "max_walk_minutes": 15}))
+            part = types.Part(function_call=types.FunctionCall(id="s1", name="search_places", args=args))
         else:
             part = types.Part(text="Edna + Vita | Italian | 4.8 | $$ | about 6 min walk | open now yes | wheelchair entrance yes")
     else:
@@ -132,7 +138,7 @@ DONE = LlmResponse(turn_complete=True)
 class FakeLive(BaseLlmConnection):
     def __init__(self) -> None:
         self.q: asyncio.Queue = asyncio.Queue()
-        self.notes = 0
+        self.next_note = ""          # what to do when note_preferences answers
 
     def push(self, *items) -> None:
         for it in items:
@@ -148,20 +154,27 @@ class FakeLive(BaseLlmConnection):
             name = p.function_response.name
             LIVE_HEARD.append("response:" + name)
             if name == "note_preferences":
-                self.notes += 1
-                if self.notes == 1:      # speak first, then hand off
+                if self.next_note == "first":      # speak first, then hand off
                     self.push(audio("Let me send my scout to look."), call("scout", request="dinner within 15 minutes"), DONE)
+                elif self.next_note == "drive":
+                    self.push(audio("Sure, I'll look a little further out."),
+                              call("scout", request="dinner, driving, within 10 minutes"), DONE)
                 else:
                     self.push(audio("Times Square has a lot going on."), DONE)
             elif name == "scout":
-                self.push(audio("I found Edna + Vita and The Frederick. Which sounds good?"), DONE)
+                self.push(audio("I found Edna + Vita and The Frederick. Which sounds good?" if self.next_note == "first"
+                                else "By car, Edna + Vita is a couple of minutes away."), DONE)
             elif name == "navigator":
                 self.push(audio("Scan the code on the screen to open it in Google Maps."), DONE)
             return
         text = p.text or ""
         LIVE_HEARD.append("text:" + text[:40])
         if "dinner" in text:
-            self.push(call("note_preferences", city="Toronto", walk_minutes=15), DONE)
+            self.next_note = "first"
+            self.push(call("note_preferences", city="Toronto", travel="walk", max_minutes=15), DONE)
+        elif "drive" in text:
+            self.next_note = "drive"
+            self.push(call("note_preferences", travel="drive", max_minutes=10), DONE)
         elif "Edna" in text:
             self.push(audio("Great choice. Let me get you directions."), call("navigator", request="Edna + Vita"), DONE)
         elif "interrupt" in text:
@@ -175,6 +188,7 @@ class FakeLive(BaseLlmConnection):
         elif text.startswith("(Your scout is searching now"):
             self.push(audio("What are you in the mood for?"), DONE)
         elif "Times Square" in text:
+            self.next_note = "times"
             self.push(call("note_preferences", near="Times Square", city="New York"), DONE)
 
     async def send_realtime(self, blob):
@@ -253,7 +267,8 @@ async def main() -> int:
         ok = await until(lambda: any("I found" in e.get("text", "") for e in of("transcript", who="agent")))
         check("turn 1 completes with the scout's results spoken", ok)
         prefs = of("prefs")
-        check("preferences strip filled", bool(prefs) and prefs[-1]["prefs"].get("walk_minutes") == 15,
+        check("preferences strip filled", bool(prefs) and prefs[-1]["prefs"].get("max_minutes") == 15
+              and prefs[-1]["prefs"].get("travel") == "walking",
               json.dumps(prefs[-1]["prefs"]) if prefs else "none")
         check("saying the city we're already in keeps the exact spot",
               len(of("location")) == 1 and not LOOKED_UP, f"{len(of('location'))} location events; looked up {LOOKED_UP}")
@@ -278,14 +293,26 @@ async def main() -> int:
         check("the scout used its tool and answered", SPECIALIST_CALLS[:2] == ["scout:call", "scout:answer"],
               str(SPECIALIST_CALLS))
 
-        # Turn 2: the pick -> Navigator -> QR code.
+        # Walk -> drive: the Scout looks further out and the times become driving times.
+        n_places = len(of("places"))
+        await ws.send(json.dumps({"type": "text", "text": "Actually, let's drive."}))
+        ok = await until(lambda: len(of("places")) > n_places and any("By car" in e.get("text", "") for e in of("transcript", who="agent")))
+        check("switching to driving searches again", ok)
+        dcards = of("places")[-1]["places"] if ok else []
+        check("driving: wider search, driving times, the 10-minute limit",
+              SEARCHES[-1].get("radius_m") == 8000 and dcards and all(c["travel"] == "driving" and c["minutes_about"] <= 10 for c in dcards),
+              f"radius {SEARCHES[-1].get('radius_m')}; " + str([(c['name'], c['minutes_about'], c['travel']) for c in dcards]))
+        check("walking search used the walking radius", SEARCHES[0].get("radius_m") == 1200, str(SEARCHES[0].get("radius_m")))
+        check("preferences strip says driving", of("prefs")[-1]["prefs"].get("travel") == "driving")
+
+        # Turn 2: the pick -> Navigator -> QR code (driving, because that's what the user chose).
         await ws.send(json.dumps({"type": "text", "text": "Let's go with Edna + Vita."}))
         ok = await until(lambda: bool(of("route")))
         route = of("route")[-1] if ok else {}
         check("navigator puts a route on screen", ok)
         check("route is a Google Maps directions link with the place ID",
               route.get("url", "").startswith("https://www.google.com/maps/dir/?api=1")
-              and "destination_place_id=p-edna" in route.get("url", "") and "travelmode=walking" in route.get("url", ""),
+              and "destination_place_id=p-edna" in route.get("url", "") and "travelmode=driving" in route.get("url", ""),
               route.get("url", ""))
         check("QR code is an SVG", route.get("qr_svg", "").startswith("<svg"))
         await until(lambda: ("navigator", "done") in [(e["name"], e["state"]) for e in of("agent")])

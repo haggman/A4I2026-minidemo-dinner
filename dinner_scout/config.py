@@ -54,6 +54,8 @@ LANDMARKS = {
 DEFAULT_CITY = _get("A4I_DEFAULT_CITY", "Toronto")
 SEARCH_RADIUS_M = float(_get("A4I_SEARCH_RADIUS_M", "1200"))
 WALK_M_PER_MIN = float(_get("A4I_WALK_M_PER_MIN", "80"))
+DRIVE_RADIUS_M = float(_get("A4I_DRIVE_RADIUS_M", "8000"))
+DRIVE_M_PER_MIN = float(_get("A4I_DRIVE_M_PER_MIN", "400"))
 
 # ADK and google-genai pick their backend from the environment.
 if BACKEND == "vertex":
