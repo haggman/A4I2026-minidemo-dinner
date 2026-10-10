@@ -76,6 +76,20 @@ async def page_config():
                          "cities": list(config.LANDMARKS), "voice": config.VOICE, "live_model": config.LIVE_MODEL})
 
 
+@app.get("/api/nearest")
+async def nearest(lat: float, lng: float):
+    """Name the spot nearest to the browser's location, for the map label before Start."""
+    import httpx
+    from . import places
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            n = await places.nearest_place(client, config.MAPS_SERVER_KEY, lat, lng)
+    except Exception as e:
+        return JSONResponse({"name": "", "error": str(e)[:200]})
+    return JSONResponse({"name": n["name"], "address": n["address"], "city": n["city"],
+                         "local_time": tools.local_time(n["utc_offset_min"])})
+
+
 @app.get("/healthz")
 async def healthz():
     return {"ok": True}
@@ -141,6 +155,9 @@ async def ws_endpoint(ws: WebSocket):
                 await tools.locate(st, city=start.get("city") or config.DEFAULT_CITY)     # fallback: demo.env
         except Exception as e:
             st.emit({"type": "error", "message": f"Couldn't place the map: {e}"})
+        lm = st.landmark or {}
+        print(f"[dinner-scout] session starts near {lm.get('name', '?')} ({st.city or 'city unknown'}), "
+              f"{'from the browser' if 'lat' in start else 'from demo.env'}", flush=True)
         r = runner()
         session = await r.session_service.create_session(app_name=APP_NAME, user_id="stage",
                                                          state={stages.STAGE_KEY: st.id})

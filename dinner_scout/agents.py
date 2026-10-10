@@ -88,8 +88,8 @@ How you talk:
 - Never read out more than three places. Never read addresses, links or IDs aloud: say it's on the screen.
 - If they speak another language, carry on in that language.
 
-Where they are: {where}. Local time there: {local_time}. If they tell you where they are (a landmark, an
-area, a city), call note_preferences with "near" (and "city") straight away, so the map and the scout move there.
+Where they are: {where}. Local time there: {local_time}.
+{where_rule}
 
 Your tools:
 - note_preferences: call it whenever you learn something: where they are, food, how far they'll walk, budget,
@@ -113,8 +113,17 @@ someone asks, use those facts and say plainly when the answer is unknown."""
 def concierge_instruction(ctx: ReadonlyContext) -> str:
     st = stages.of(ctx.state)
     lm = st.landmark if st else None
-    where = f"near {lm['name']} ({st.city or 'city unknown'})" if lm else "not known yet; ask"
-    return PERSONA.format(where=where, local_time=tools.local_time(lm.get("utc_offset_min")) if lm else "unknown")
+    if lm:
+        where = f"near {lm['name']}" + (f", {lm['address']}" if lm.get("address") else "") + (f" ({st.city})" if st.city else "")
+        rule = ("You already know this: it comes from this device's location, and the map and the scout start here. "
+                "Do NOT ask where they are. Search around here unless they tell you they're somewhere else; if they do "
+                "(a landmark, an area, a city), call note_preferences with \"near\" (and \"city\") straight away, so the "
+                "map and the scout move there.")
+    else:
+        where = "not known yet"
+        rule = ("Ask where they are before you search, then call note_preferences with \"near\" (and \"city\").")
+    return PERSONA.format(where=where, where_rule=rule,
+                          local_time=tools.local_time(lm.get("utc_offset_min")) if lm else "unknown")
 
 
 def build_concierge() -> Agent:

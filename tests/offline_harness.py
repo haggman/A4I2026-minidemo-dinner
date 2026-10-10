@@ -191,8 +191,13 @@ class FakeLive(BaseLlmConnection):
         pass
 
 
+INSTRUCTIONS: list[str] = []
+
+
 @contextlib.asynccontextmanager
 async def fake_connect(self, llm_request):
+    si = llm_request.config.system_instruction
+    INSTRUCTIONS.append(si if isinstance(si, str) else " ".join(p.text or "" for p in (si.parts if si else [])))
     yield FakeLive()
 
 
@@ -235,6 +240,10 @@ async def main() -> int:
 
         await ws.send(json.dumps({"type": "start", "mode": "auto", **VENUE}))
         check("ready", await until(lambda: of("ready")))
+        await until(lambda: bool(INSTRUCTIONS), 3)
+        si = INSTRUCTIONS[0] if INSTRUCTIONS else ""
+        check("the voice's instructions say where we are and not to ask",
+              "Metro Toronto Convention Centre" in si and "Do NOT ask where they are" in si, si[si.find("Where they are"):][:160])
         loc = of("location")[0] if of("location") else {}
         check("map starts at the browser's location, named by the nearest place",
               loc.get("name") == "Metro Toronto Convention Centre" and loc.get("lat") == VENUE["lat"], str(loc)[:120])

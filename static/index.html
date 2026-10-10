@@ -141,7 +141,7 @@ button, input, select { font: inherit; color: inherit; }
   <section class="mapwrap" aria-label="Map">
     <div id="map"></div>
     <div class="nomap" id="nomap"><div><b>Map</b>The Google map appears here once a browser key (MAPS_BROWSER_KEY) is in keys.env.<div class="pins" id="nopins"></div></div></div>
-    <div class="where"><span class="here" id="here">Press Start: Dinner Scout uses this computer&#39;s location</span><span id="chips"></span></div>
+    <div class="where"><span class="here" id="here">Finding where you are…</span><span id="chips"></span></div>
     <div class="gmlogo" id="gmlogo">Google Maps</div>
     <div class="route" id="route" hidden>
       <div class="qr" id="qr" aria-label="QR code that opens Google Maps"></div>
@@ -190,18 +190,36 @@ function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;
 async function boot() {
   try { S.cfg = await (await fetch("/api/config")).json(); } catch (e) { S.cfg = { cities: ["Toronto"], default_city: "Toronto" }; }
   if (S.cfg.maps_browser_key) loadMap(S.cfg.maps_browser_key, S.cfg.map_id || "DEMO_MAP_ID");
+  locateNow();
+}
+async function locateNow() {
+  $("here").textContent = "Finding where you are…";
+  S.where = await whereAmI();
+  if (!S.where) { $("here").textContent = `Location off: starting near ${S.cfg.default_city || "the default city"}`; return; }
+  showWhere();
+  try {
+    const n = await (await fetch(`/api/nearest?lat=${S.where.lat}&lng=${S.where.lng}`)).json();
+    if (n.name && !S.here) $("here").innerHTML = `Near ${esc(n.name)}<small>${esc(n.local_time || "")}</small>`;
+  } catch (e) {}
+}
+function showWhere() {
+  if (!S.here) $("here").textContent = "You are here";
+  if (!S.map) return;
+  S.map.setCenter({ lat: S.where.lat, lng: S.where.lng }); S.map.setZoom(15);
+  if (!S.markers.__here) S.markers.__here = new S.gm.AdvancedMarkerElement({ map: S.map, position: { lat: S.where.lat, lng: S.where.lng }, content: pinEl("", "here"), title: "You are here" });
 }
 function loadMap(key, mapId) {
   window.__initMap = async () => {
     try {
       const { Map } = await google.maps.importLibrary("maps");
       const marker = await google.maps.importLibrary("marker");
-      const opts = { center: { lat: 43.6454, lng: -79.3808 }, zoom: 15, mapId, disableDefaultUI: true, zoomControl: true, clickableIcons: false };
+      const c = S.where || { lat: 39.5, lng: -98.35 };
+      const opts = { center: { lat: c.lat, lng: c.lng }, zoom: S.where ? 15 : 4, mapId, disableDefaultUI: true, zoomControl: true, clickableIcons: false };
       try { if (google.maps.ColorScheme) opts.colorScheme = google.maps.ColorScheme.DARK; } catch (e) {}
       S.map = new Map($("map"), opts);
       S.gm = marker;
       $("nomap").hidden = true; $("gmlogo").hidden = true;      // the Google map carries its own logo
-      if (S.here) setHere(S.here); redrawPins();
+      if (S.here) setHere(S.here); else if (S.where) showWhere(); redrawPins();
     } catch (e) { toast("The map didn't load: " + e.message); }
   };
   const s = document.createElement("script");
@@ -355,8 +373,8 @@ async function start() {
   $("start").disabled = true;
   S.mode = $("holdmode").checked ? "hold" : "auto";
   try { await startAudio(); } catch (e) { toast("Microphone: " + e.message + ". You can still type below."); }
-  $("state").textContent = "Finding where you are…";
-  const where = await whereAmI();
+  const where = S.where || await whereAmI();
+  if (where) S.where = where;
   if (!where) toast(`Couldn't get this computer's location, so starting near ${S.cfg.default_city || "the default city"}. You can also just say where you are.`);
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws`);
