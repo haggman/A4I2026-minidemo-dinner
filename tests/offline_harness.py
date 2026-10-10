@@ -25,7 +25,7 @@ from google.adk.models.base_llm_connection import BaseLlmConnection  # noqa: E40
 from google.adk.models.llm_response import LlmResponse  # noqa: E402
 from google.genai import types  # noqa: E402
 
-from dinner_scout import places, server  # noqa: E402
+from dinner_scout import places, routes, server  # noqa: E402
 
 RESULTS: list[tuple[str, bool, str]] = []
 PORT = 8765
@@ -85,6 +85,19 @@ async def fake_photo_uri(client, key, photo_name, max_width=480):
 places.find_landmark = fake_find_landmark
 places.search_dinner = fake_search_dinner
 places.photo_uri = fake_photo_uri
+
+ROUTES_CALLS: list[dict] = []
+ROUTES_DOWN = {"on": False}
+
+
+async def fake_travel_minutes(client, key, origin, destinations, travel="walking", traffic=True):
+    ROUTES_CALLS.append({"travel": travel, "traffic": traffic, "n": len(destinations)})
+    if ROUTES_DOWN["on"]:
+        raise routes.RoutesError("HTTP 403: Routes API has not been used in project")
+    return [7 if travel == "walking" else 4 for _ in destinations]   # real times differ from the estimates
+
+
+routes.travel_minutes = fake_travel_minutes
 places.nearest_place = fake_nearest_place
 
 
@@ -275,6 +288,9 @@ async def main() -> int:
         cards = of("places")
         names = [p["name"] for p in cards[-1]["places"]] if cards else []
         check("cards and pins, the too-far place filtered out", names and "Too Far Away Bistro" not in names, str(names))
+        check("walking times come from the Routes API",
+              bool(cards) and all(p["minutes_about"] == 7 and p["minutes_from"] == "routes" for p in cards[-1]["places"])
+              and ROUTES_CALLS and ROUTES_CALLS[0]["travel"] == "walking", str(ROUTES_CALLS[:1]))
         check("cards carry pin coordinates and a Google Maps link",
               bool(cards) and all(p.get("lat") and p.get("maps_uri") for p in cards[-1]["places"]))
         await until(lambda: len(of("photo")) >= 3)
@@ -302,6 +318,8 @@ async def main() -> int:
         check("driving: wider search, driving times, the 10-minute limit",
               SEARCHES[-1].get("radius_m") == 8000 and dcards and all(c["travel"] == "driving" and c["minutes_about"] <= 10 for c in dcards),
               f"radius {SEARCHES[-1].get('radius_m')}; " + str([(c['name'], c['minutes_about'], c['travel']) for c in dcards]))
+        check("driving times from Routes, with traffic", ROUTES_CALLS[-1] == {"travel": "driving", "traffic": True, "n": 3}
+              and all(c["minutes_about"] == 4 and c["minutes_from"] == "routes" for c in dcards), str(ROUTES_CALLS[-1]))
         check("walking search used the walking radius", SEARCHES[0].get("radius_m") == 1200, str(SEARCHES[0].get("radius_m")))
         check("preferences strip says driving", of("prefs")[-1]["prefs"].get("travel") == "driving")
 
@@ -319,6 +337,19 @@ async def main() -> int:
         check("navigator lights up then finishes", ("navigator", "done") in [(e["name"], e["state"]) for e in of("agent")])
 
         # Interruption, Search sources, the nudge, and moving city.
+        # Routes refuses (API not enabled on the key's project): the Scout keeps the estimates and says so.
+        ROUTES_DOWN["on"] = True
+        n_places = len(of("places"))
+        await ws.send(json.dumps({"type": "text", "text": "Let's drive again."}))
+        ok = await until(lambda: len(of("places")) > n_places)
+        fb = of("places")[-1]["places"] if ok else []
+        check("if Routes fails, the search still returns, with estimates",
+              ok and fb and all(c["minutes_from"] == "estimate" for c in fb), str([(c["name"], c["minutes_about"]) for c in fb]))
+        check("and the who's-working panel says the times are estimated",
+              any("estimated" in (e.get("status") or "") for e in of("agent")))
+        ROUTES_DOWN["on"] = False
+        await until(lambda: any(e.get("type") == "turn_complete" for e in events[-3:]), 3)
+
         await ws.send(json.dumps({"type": "text", "text": "interrupt test"}))
         check("interruption reaches the page", await until(lambda: bool(of("interrupted"))))
         await ws.send(json.dumps({"type": "text", "text": "Is JOEY a chain?"}))

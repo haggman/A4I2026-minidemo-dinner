@@ -285,7 +285,7 @@ function renderCard(id) {
   d.className = "card" + (id === S.chosen ? " chosen" : "");
   d.innerHTML = `<div class="ph">${p.photo ? `<img src="${esc(p.photo)}" alt="" onerror="this.remove()">` : ""}<span class="num">${i}</span></div>
     <div style="min-width:0"><h4>${esc(p.name)}</h4>
-      <div class="meta">${p.rating ? `<b>${p.rating}★</b> (${(p.ratings || 0).toLocaleString()}) · ` : ""}${p.price ? esc(p.price) + " · " : ""}about <b>${p.minutes_about} min</b> ${p.travel === "driving" ? "drive" : "walk"}${p.kind ? " · " + esc(p.kind) : ""}</div>
+      <div class="meta">${p.rating ? `<b>${p.rating}★</b> (${(p.ratings || 0).toLocaleString()}) · ` : ""}${p.price ? esc(p.price) + " · " : ""}${p.minutes_from === "routes" ? "" : "about "}<b>${p.minutes_about} min</b> ${p.travel === "driving" ? "drive" : "walk"}${p.kind ? " · " + esc(p.kind) : ""}</div>
       <div class="tags">${yn(p.open_now, "open now", "closed now")}${yn(p.wheelchair_entrance, "♿ entrance", "♿ entrance: no")}${yn(p.wheelchair_restroom, "♿ restroom", "♿ restroom: no")}${yn(p.vegetarian, "vegetarian", "")}${yn(p.good_for_groups, "groups", "")}</div>
       <div class="small">${p.photo && attr ? "Photo: " + attr + " · " : ""}${p.maps_uri ? `<a href="${esc(p.maps_uri)}" target="_blank" rel="noopener">Open in Google Maps</a>` : ""}</div></div>`;
 }
@@ -293,7 +293,7 @@ function showRoute(m) {
   S.chosen = m.place_id; S.order.forEach(renderCard); redrawPins();
   $("qr").innerHTML = m.qr_svg; $("rname").textContent = m.name;
   const mode = { walking: "Walking", driving: "Driving", transit: "Transit" }[m.travel_mode] || m.travel_mode;
-  $("rmeta").textContent = `${mode}${m.minutes_about != null ? ", about " + m.minutes_about + " min" : ""}`;
+  $("rmeta").textContent = `${mode}${m.minutes_about != null ? (m.minutes_from === "routes" ? ", " : ", about ") + m.minutes_about + " min" : ""}`;
   $("rlink").href = m.url; $("rlink").textContent = "Open the link";
   $("route").hidden = false;
   const card = $("c-" + m.place_id); if (card) card.scrollIntoView({ behavior: "smooth", block: "nearest" });

@@ -3,8 +3,9 @@
 #
 #     bash scripts/make_places_key.sh
 #
-# It enables Vertex AI (Gemini, no key needed) and Places API (New), makes ONE API key restricted to Places API
-# (New) named "dinner-scout-places" (or reuses it), and writes it into keys.env as MAPS_SERVER_KEY.
+# It enables Vertex AI (Gemini, no key needed), Places API (New) and the Routes API (real walking and driving
+# times), makes ONE API key restricted to those two Maps APIs named "dinner-scout-places" (or reuses it and makes
+# sure both are allowed), and writes it into keys.env as MAPS_SERVER_KEY.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -22,24 +23,29 @@ existing="$(grep -E '^MAPS_SERVER_KEY=.+' keys.env 2>/dev/null | head -1 | cut -
 if [[ -n "${existing}" ]]; then
   echo "keys.env already has a MAPS_SERVER_KEY; using it. Enabling Vertex AI only..."
   gcloud services enable aiplatform.googleapis.com
+  echo "For real travel times, that key's own project needs the Routes API too. In that project's Cloud Shell, run"
+  echo "this same script once (it adds Routes to the key), or turn A4I_ROUTES off in demo.env. Without it the"
+  echo "Scout quietly uses straight-line estimates."
   echo "Next: source scripts/activate.sh && python probe/probe.py"
   exit 0
 fi
 
-echo "Enabling Vertex AI, Places API (New) and API Keys (a minute the first time)..."
-gcloud services enable aiplatform.googleapis.com places.googleapis.com apikeys.googleapis.com
+echo "Enabling Vertex AI, Places API (New), Routes API and API Keys (a minute the first time)..."
+gcloud services enable aiplatform.googleapis.com places.googleapis.com routes.googleapis.com apikeys.googleapis.com
 
 find_key() {
   gcloud services api-keys list --filter='displayName=dinner-scout-places' --format='value(name)' | head -1
 }
 name="$(find_key)"
 if [[ -z "${name}" ]]; then
-  echo "Creating the key dinner-scout-places (restricted to Places API (New))..."
+  echo "Creating the key dinner-scout-places (restricted to Places API (New) and the Routes API)..."
   gcloud services api-keys create --display-name=dinner-scout-places \
-    --api-target=service=places.googleapis.com >/dev/null
+    --api-target=service=places.googleapis.com --api-target=service=routes.googleapis.com >/dev/null
   name="$(find_key)"
 else
-  echo "Reusing the existing key dinner-scout-places."
+  echo "Reusing the existing key dinner-scout-places; making sure it allows Places and Routes..."
+  gcloud services api-keys update "${name}" \
+    --api-target=service=places.googleapis.com --api-target=service=routes.googleapis.com >/dev/null
 fi
 if [[ -z "${name}" ]]; then
   echo "Could not find the key after creating it. Make one in the console instead (see the README)." >&2

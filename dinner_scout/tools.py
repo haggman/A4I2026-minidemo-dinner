@@ -17,7 +17,7 @@ from typing import Optional
 import httpx
 from google.adk.tools.tool_context import ToolContext
 
-from . import config, maps_links, places
+from . import config, maps_links, places, routes
 from . import stage as stages
 
 log = logging.getLogger("dinner_scout")
@@ -28,7 +28,7 @@ CITY_ALIASES = {
     "new york city": "New York", "nyc": "New York", "manhattan": "New York",
 }
 SKIP_STATUS = {"CLOSED_PERMANENTLY", "CLOSED_TEMPORARILY"}
-TERSE = ("name", "kind", "rating", "price", "minutes_about", "travel", "open_now", "wheelchair_entrance",
+TERSE = ("name", "kind", "rating", "price", "minutes_about", "minutes_from", "travel", "open_now", "wheelchair_entrance",
          "wheelchair_restroom", "wheelchair_seating", "vegetarian", "good_for_groups", "summary")
 
 
@@ -189,6 +189,9 @@ async def search_places(tool_context: ToolContext, query: str, travel: str = "",
                                            max_price=max_price or None, page_size=15)
     cards = [places.card(p, lm["lat"], lm["lng"], pace, mode) for p in found
              if p.get("businessStatus") not in SKIP_STATUS]
+    if config.ROUTES:
+        cards = [c for c in cards if c["minutes_about"] <= limit * 1.5][:15]   # straight-line, so loose
+        await _real_times(st, lm, cards, mode)
     cards = [c for c in cards if c["minutes_about"] <= limit]
     if wheelchair:
         cards = [c for c in cards if c.get("wheelchair_entrance") is True]
@@ -205,6 +208,27 @@ async def search_places(tool_context: ToolContext, query: str, travel: str = "",
         return {"places": [], "note": f"Nothing matched within about {limit} minutes' {how}. Try a broader "
                                       f"query or a longer {how}."}
     return {"places": rows}
+
+
+async def _real_times(st: stages.Stage, lm: dict, cards: list[dict], mode: str) -> None:
+    """Replace the straight-line estimates with Routes API times, in place. On any failure, keep the estimates
+    (and say so in the who's-working panel): a slow or refused Routes call must never stall the demo."""
+    if not cards:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=6) as client:
+            mins = await routes.travel_minutes(client, config.MAPS_SERVER_KEY, (lm["lat"], lm["lng"]),
+                                               [(c["lat"], c["lng"]) for c in cards], mode, config.ROUTES_TRAFFIC)
+    except Exception as e:
+        log.warning("Routes API failed, keeping estimates: %s", e)
+        st.agent("scout", "working", "Travel times estimated (Routes didn't answer)")
+        return
+    for c, m in zip(cards, mins):
+        if m is not None:
+            c["minutes_about"] = m
+            c["minutes_from"] = "routes"
+            if mode == "walking":
+                c["walk_minutes_about"] = m
 
 
 def _find(st: stages.Stage, place: str) -> Optional[dict]:
@@ -240,5 +264,6 @@ def show_route(tool_context: ToolContext, place: str, travel_mode: str = "") -> 
     st.chosen = c["place_id"]
     st.emit({"type": "route", "place_id": c["place_id"], "name": c["name"], "url": url,
              "qr_svg": maps_links.qr_svg(url), "travel_mode": travel_mode,
-             "minutes_about": c.get("minutes_about"), "maps_uri": c.get("maps_uri")})
+             "minutes_about": c.get("minutes_about"), "minutes_from": c.get("minutes_from"),
+             "maps_uri": c.get("maps_uri")})
     return {"ok": True, "name": c["name"], "travel_mode": travel_mode, "minutes_about": c.get("minutes_about")}

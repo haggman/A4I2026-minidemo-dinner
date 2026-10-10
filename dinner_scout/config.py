@@ -56,6 +56,8 @@ SEARCH_RADIUS_M = float(_get("A4I_SEARCH_RADIUS_M", "1200"))
 WALK_M_PER_MIN = float(_get("A4I_WALK_M_PER_MIN", "80"))
 DRIVE_RADIUS_M = float(_get("A4I_DRIVE_RADIUS_M", "8000"))
 DRIVE_M_PER_MIN = float(_get("A4I_DRIVE_M_PER_MIN", "400"))
+ROUTES = _get("A4I_ROUTES", "on").lower() in ("on", "1", "true", "yes")              # real times from the Routes API
+ROUTES_TRAFFIC = _get("A4I_ROUTES_TRAFFIC", "on").lower() in ("on", "1", "true", "yes")
 
 # ADK and google-genai pick their backend from the environment.
 if BACKEND == "vertex":

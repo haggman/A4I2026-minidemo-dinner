@@ -13,7 +13,7 @@ Behind it is a small team of agents built with the Agent Development Kit (ADK):
 - **Navigator** (Gemini 3.8 Flash + Google Maps links): turns your pick into directions and a QR code.
 
 > **Status (2026-10-09): built, not yet run against Google.** The agents, the server and the page are done and
-> pass the offline harness (25/25). Next: a real conversation in Cloud Shell, then the rehearsal kit.
+> pass the offline harness (34/34). Next: a real conversation in Cloud Shell, then the rehearsal kit.
 
 ## Run it in Cloud Shell
 
@@ -24,7 +24,7 @@ locked to the Maps JavaScript API and to Cloud Shell and localhost, for the map 
 ```bash
 gcloud config set project YOUR_PROJECT_ID
 git clone https://github.com/haggman/A4I2026-minidemo-dinner.git && cd A4I2026-minidemo-dinner
-bash scripts/make_places_key.sh     # Vertex AI + Places API (New); the server's key
+bash scripts/make_places_key.sh     # Vertex AI, Places API (New), Routes API; the server's key
 bash scripts/make_map_key.sh        # Maps JavaScript API; the page's key
 source scripts/activate.sh
 bash scripts/run.sh
@@ -46,12 +46,13 @@ http://localhost:8080.
 |---|---|
 | `dinner_scout/agents.py` | The three agents, the Concierge's instructions, and why it's built this way |
 | `dinner_scout/tools.py` | `note_preferences`, `search_places`, `show_route`: each does the work and updates the page |
+| `dinner_scout/routes.py` | Real walking and driving times (Routes API route matrix), one call per search |
 | `dinner_scout/server.py` | FastAPI + WebSocket relay between the page and the live session |
 | `static/index.html` | The page: map, voice, who's working, cards, QR code |
 | `demo.env` | Settings you might change (models, Vertex location, landmarks per city, walking pace) |
 | `tests/offline_harness.py` | Scripted stand-ins for Gemini and Places drive the real server; no Google calls |
 | `tests/serve_offline.py` | The page with those stand-ins, for trying the layout without keys |
-| `probe/` | The probes that settled the design (see below) |
+| `probe/` | The probes that settled the design (see below); `probe/routes_check.py` checks the Routes API |
 
 ## How the design was settled
 

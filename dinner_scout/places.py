@@ -110,6 +110,7 @@ def compact(place: dict, origin_lat: float, origin_lng: float, m_per_min: float 
         "ratings": place.get("userRatingCount"),
         "price": PRICE_SIGNS.get(place.get("priceLevel", ""), None),
         "minutes_about": max(1, round(metres / m_per_min)),
+        "minutes_from": "estimate",          # straight-line; "routes" once the Routes API has timed it
         "travel": travel,
         "walk_minutes_about": round(metres / m_per_min) if travel == "walking" else None,
         "open_now": hours.get("openNow"),

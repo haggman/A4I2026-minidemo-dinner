@@ -54,7 +54,8 @@ def build_scout() -> Agent:
             "You find dinner options with the search_places tool. Call it once (twice at most, if the first search "
             "finds nothing). Pass the user's limits through: travel (walking or driving), max_minutes, max_price, "
             "open_now, wheelchair. Then reply with one line per place, best first, at most five, and nothing else: "
-            "name | kind | rating | price | about N min walk (or drive) | open now yes/no | wheelchair entrance "
+            "name | kind | rating | price | N min walk (or drive; say \"about\" when minutes_from is estimate) | "
+            "open now yes/no | wheelchair entrance "
             "yes/no/unknown | one short note from the summary. Every fact comes from the tool."),
         tools=[tools.search_places],
         generate_content_config=SPECIALIST_THINKING,
