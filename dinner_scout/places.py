@@ -118,3 +118,38 @@ def compact(place: dict, origin_lat: float, origin_lng: float, walk_m_per_min: f
         "reservable": place.get("reservable"),
         "summary": (place.get("editorialSummary") or {}).get("text"),
     }
+
+
+PHOTO_URL = "https://places.googleapis.com/v1/{name}/media"
+
+
+async def photo_uri(client: httpx.AsyncClient, key: str, photo_name: str, max_width: int = 480) -> Optional[str]:
+    """A short-lived image URL for one place photo (skipHttpRedirect returns JSON with photoUri, so the key never
+    reaches the page). None if Places says no."""
+    r = await client.get(PHOTO_URL.format(name=photo_name),
+                         params={"maxWidthPx": max_width, "skipHttpRedirect": "true", "key": key})
+    if r.status_code != 200:
+        return None
+    return r.json().get("photoUri")
+
+
+def card(place: dict, origin_lat: float, origin_lng: float, walk_m_per_min: float = 80) -> dict:
+    """Everything the page shows for one place: the compact row plus what only the screen needs (the address,
+    the Google Maps link, the pin, the first photo's name and its author attributions)."""
+    row = compact(place, origin_lat, origin_lng, walk_m_per_min)
+    loc = place.get("location") or {}
+    access = place.get("accessibilityOptions") or {}
+    photos = place.get("photos") or []
+    first = photos[0] if photos else {}
+    row.update({
+        "address": place.get("shortFormattedAddress", ""),
+        "maps_uri": place.get("googleMapsUri"),
+        "lat": loc.get("latitude"),
+        "lng": loc.get("longitude"),
+        "wheelchair_parking": access.get("wheelchairAccessibleParking"),
+        "outdoor_seating": place.get("outdoorSeating"),
+        "photo_name": first.get("name"),
+        "photo_attributions": [{"name": a.get("displayName", ""), "uri": a.get("uri", "")}
+                               for a in (first.get("authorAttributions") or [])],
+    })
+    return row

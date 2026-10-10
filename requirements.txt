@@ -1,3 +1,6 @@
 # ADK is pinned to the same version as the kickoff demo (A4I2026-demo-orbital-conjunction).
 google-adk==2.7.0
 httpx>=0.27
+qrcode>=7.4
+fastapi>=0.115,<1
+uvicorn>=0.30

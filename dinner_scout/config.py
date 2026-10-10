@@ -34,6 +34,7 @@ LIVE_MODEL = _get("A4I_LIVE_MODEL", "gemini-3.8-live")
 TEXT_MODEL = _get("A4I_TEXT_MODEL", "gemini-3.8-flash")
 TTS_MODEL = _get("A4I_TTS_MODEL", "gemini-3.8-flash-tts")
 VOICE = _get("A4I_VOICE", "Kore")
+SPECIALIST_THINKING = _get("A4I_SPECIALIST_THINKING", "LOW").upper()   # gemini-3.8-flash rejects MINIMAL
 BACKEND = _get("A4I_BACKEND", "vertex").lower()
 VERTEX_LOCATION = _get("A4I_VERTEX_LOCATION", "us")                   # the Live model (multi-region)
 VERTEX_TEXT_LOCATION = _get("A4I_VERTEX_TEXT_LOCATION", "global")    # the specialists
