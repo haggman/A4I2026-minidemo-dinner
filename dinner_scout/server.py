@@ -77,7 +77,7 @@ async def page_config():
 
 
 @app.get("/api/nearest")
-async def nearest(lat: float, lng: float):
+async def nearest(lat: float, lng: float, tz: int | None = None):
     """Name the spot nearest to the browser's location, for the map label before Start."""
     import httpx
     from . import places
@@ -86,8 +86,9 @@ async def nearest(lat: float, lng: float):
             n = await places.nearest_place(client, config.MAPS_SERVER_KEY, lat, lng)
     except Exception as e:
         return JSONResponse({"name": "", "error": str(e)[:200]})
+    utc = n["utc_offset_min"] if n["utc_offset_min"] is not None else tz
     return JSONResponse({"name": n["name"], "address": n["address"], "city": n["city"],
-                         "local_time": tools.local_time(n["utc_offset_min"])})
+                         "local_time": tools.local_time(utc)})
 
 
 @app.get("/healthz")
@@ -150,7 +151,9 @@ async def ws_endpoint(ws: WebSocket):
         mode = "hold" if start.get("mode") == "hold" else "auto"
         try:
             if isinstance(start.get("lat"), (int, float)) and isinstance(start.get("lng"), (int, float)):
-                await tools.locate_at(st, float(start["lat"]), float(start["lng"]))     # the browser's location
+                tz = start.get("tz_offset_min")
+                await tools.locate_at(st, float(start["lat"]), float(start["lng"]),     # the browser's location
+                                      int(tz) if isinstance(tz, (int, float)) else None)
             else:
                 await tools.locate(st, city=start.get("city") or config.DEFAULT_CITY)     # fallback: demo.env
         except Exception as e:

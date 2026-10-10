@@ -61,7 +61,7 @@ async def locate(st: stages.Stage, near: str = "", city: str = "") -> dict:
     return lm
 
 
-async def locate_at(st: stages.Stage, lat: float, lng: float) -> dict:
+async def locate_at(st: stages.Stage, lat: float, lng: float, tz_offset_min: Optional[int] = None) -> dict:
     """Start from the browser's own location: search around the exact coordinates, and name the nearest place so
     the voice (and the map label) can say where that is."""
     try:
@@ -70,8 +70,9 @@ async def locate_at(st: stages.Stage, lat: float, lng: float) -> dict:
     except Exception as e:
         log.warning("nearest place failed: %s", e)
         near = {"name": "", "address": "", "city": "", "utc_offset_min": None}
+    utc = near["utc_offset_min"] if near["utc_offset_min"] is not None else tz_offset_min   # else the browser's clock
     lm = {"id": None, "name": near["name"] or "your location", "address": near["address"], "lat": lat, "lng": lng,
-          "utc_offset_min": near["utc_offset_min"]}
+          "utc_offset_min": utc}
     st.landmark = lm
     st.city = near["city"] or st.city
     st.emit({"type": "location", "name": lm["name"], "address": lm["address"], "lat": lat, "lng": lng,

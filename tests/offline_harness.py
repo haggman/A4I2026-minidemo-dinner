@@ -73,7 +73,9 @@ async def fake_search_dinner(client, key, query, lat, lng, **kw):
 VENUE = {"lat": 43.6439, "lng": -79.3861}           # where the browser says we are (the venue)
 
 
-async def fake_nearest_place(client, key, lat, lng, radius_m=150, language="en"):
+async def fake_nearest_place(client, key, lat, lng, radii_m=(150, 1500, 10000), language="en"):
+    if lat < 35:                                   # "the countryside": nothing named nearby, no UTC offset
+        return {"name": "", "address": "", "city": "", "utc_offset_min": None}
     return {"name": "Metro Toronto Convention Centre", "address": "255 Front St W", "city": "Toronto",
             "utc_offset_min": -240}
 
@@ -386,6 +388,28 @@ async def main() -> int:
         rd.cancel()
 
     # No location from the browser (refused or slow): the page starts on the default city's landmark.
+    async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws", max_size=None) as ws2:
+        await ws2.send(json.dumps({"type": "start", "mode": "hold"}))
+        first = None
+        for _ in range(10):
+            m = json.loads(await asyncio.wait_for(ws2.recv(), 5))
+            if m.get("type") == "location":
+                first = m
+                break
+        await ws2.send(json.dumps({"type": "stop"}))
+
+    # The countryside: no named place nearby, so no UTC offset from Places; the browser's clock fills in.
+    async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws", max_size=None) as ws3:
+        await ws3.send(json.dumps({"type": "start", "mode": "auto", "lat": 30.41, "lng": -88.53, "tz_offset_min": -300}))
+        loc3 = None
+        for _ in range(10):
+            m = json.loads(await asyncio.wait_for(ws3.recv(), 5))
+            if m.get("type") == "location":
+                loc3 = m
+                break
+        check("no named place nearby: 'your location', with the time from the browser's clock",
+              bool(loc3) and loc3["name"] == "your location" and loc3["local_time"] not in ("", "unknown"), str(loc3)[:140])
+        await ws3.send(json.dumps({"type": "stop"}))
     async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws", max_size=None) as ws2:
         await ws2.send(json.dumps({"type": "start", "mode": "hold"}))
         first = None

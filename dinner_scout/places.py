@@ -164,18 +164,23 @@ NEAREST_FIELDS = ("places.displayName,places.shortFormattedAddress,places.utcOff
                   "places.addressComponents")
 
 
-async def nearest_place(client: httpx.AsyncClient, key: str, lat: float, lng: float, radius_m: float = 150,
-                        language: str = "en") -> dict:
+async def nearest_place(client: httpx.AsyncClient, key: str, lat: float, lng: float,
+                        radii_m: tuple = (150, 1500, 10000), language: str = "en") -> dict:
     """Name the spot nearest to a pair of coordinates (the browser's location): the closest place's name, its
     short address, the city and the UTC offset. Nearby Search (New), ranked by distance; Pro tier fields only.
-    Checked against https://developers.google.com/maps/documentation/places/web-service/nearby-search 2026-10-09."""
-    body = {"locationRestriction": {"circle": {"center": {"latitude": lat, "longitude": lng}, "radius": float(radius_m)}},
-            "maxResultCount": 1, "rankPreference": "DISTANCE", "languageCode": language}
-    r = await client.post(NEARBY_URL, json=body, headers={
-        "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": NEAREST_FIELDS})
-    if r.status_code != 200:
-        raise PlacesError(f"HTTP {r.status_code}: {r.text[:300]}")
-    found = (r.json().get("places") or [])
+    Checked against https://developers.google.com/maps/documentation/places/web-service/nearby-search 2026-10-09.
+    Widens the circle in steps (a venue downtown answers at 150 m; a house in the country may need kilometres)."""
+    found: list = []
+    for radius_m in radii_m:
+        body = {"locationRestriction": {"circle": {"center": {"latitude": lat, "longitude": lng}, "radius": float(radius_m)}},
+                "maxResultCount": 1, "rankPreference": "DISTANCE", "languageCode": language}
+        r = await client.post(NEARBY_URL, json=body, headers={
+            "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": NEAREST_FIELDS})
+        if r.status_code != 200:
+            raise PlacesError(f"HTTP {r.status_code}: {r.text[:300]}")
+        found = (r.json().get("places") or [])
+        if found:
+            break
     if not found:
         return {"name": "", "address": "", "city": "", "utc_offset_min": None}
     p = found[0]

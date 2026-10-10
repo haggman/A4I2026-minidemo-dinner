@@ -29,7 +29,21 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-@media (min-width: 901px) { body { overflow: hidden; } }   /* the stage layout fits the window; the cards scroll inside */
+@media (min-width: 901px) {
+  body { overflow: hidden; }                     /* the stage layout fits the window; the right column scrolls inside */
+  .side { overflow-y: auto; }
+}
+@media (min-width: 901px) and (max-height: 820px) {   /* a short window, or a zoomed-in one: tighten the right column */
+  .side { grid-template-rows: auto auto auto auto auto auto; }
+  .cards { overflow: visible; }
+  .top { padding-block: 10px 6px; }
+  .orb { width: 46px; height: 46px; }
+  .title h1 { font-size: 1.5rem; }
+  .agent .what { display: none; }
+  .agent .st { min-height: 0; margin-top: 2px; }
+  .captions { min-height: 0; }
+  .qr { width: 170px; height: 170px; }
+}
 html, body { height: 100%; }
 body { margin: 0; background: var(--ink); color: var(--text); font-family: var(--body); font-size: 18px; line-height: 1.4; }
 button, input, select { font: inherit; color: inherit; }
@@ -197,10 +211,15 @@ async function locateNow() {
   if (!S.where) { $("here").textContent = `Location off: starting near ${S.cfg.default_city || "the default city"}`; return; }
   showWhere();
   try {
-    const n = await (await fetch(`/api/nearest?lat=${S.where.lat}&lng=${S.where.lng}`)).json();
-    if (n.name && !S.here) $("here").innerHTML = `Near ${esc(n.name)}<small>${esc(n.local_time || "")}</small>`;
+    const n = await (await fetch(`/api/nearest?lat=${S.where.lat}&lng=${S.where.lng}&tz=${TZ}`)).json();
+    if (!S.here) $("here").innerHTML = hereLabel(n.name, n.local_time);
   } catch (e) {}
 }
+function hereLabel(name, time) {
+  const where = name && name !== "your location" ? `Near ${esc(name)}` : "You are here";
+  return where + (time && time !== "unknown" ? `<small>${esc(time)}</small>` : "");
+}
+const TZ = -new Date().getTimezoneOffset();      // the browser's own UTC offset, for the local time if Places has none
 function showWhere() {
   if (!S.here) $("here").textContent = "You are here";
   if (!S.map) return;
@@ -229,7 +248,7 @@ function loadMap(key, mapId) {
 function pinEl(label, cls) { const d = document.createElement("div"); d.className = "pin " + (cls || ""); d.textContent = label; return d; }
 function setHere(loc) {
   S.here = loc;
-  $("here").innerHTML = `Near ${esc(loc.name)}<small>${esc(loc.local_time || "")}</small>`;
+  $("here").innerHTML = hereLabel(loc.name, loc.local_time);
   if (!S.map) return;
   S.map.panTo({ lat: loc.lat, lng: loc.lng }); S.map.setZoom(15);
   if (S.markers.__here) S.markers.__here.map = null;
@@ -329,15 +348,17 @@ function showPick() {
   const time = m.minutes_about != null ? (m.minutes_from === "routes" ? ", " : ", about ") + m.minutes_about + " min" : "";
   const c = $("cards");
   c.innerHTML = `<section class="pick" aria-label="Your pick">
-      <div class="pick-label">Your pick</div>
-      <article class="card chosen" id="c-${esc(m.place_id)}"></article>
+      <div class="pick-label">Your pick: ${esc(m.name)}</div>
       <div class="pickqr"><div class="qr" aria-label="QR code that opens the directions in Google Maps">${m.qr_svg}</div>
         <div><div class="pmode">${esc(mode + time)}</div>
           <div class="scan">${m.polyline ? "The route is on the map. " : ""}Scan to open the directions in Google Maps</div>
           <a href="${esc(m.url)}" target="_blank" rel="noopener">Open the link</a></div></div>
+      <article class="card chosen" id="c-${esc(m.place_id)}"></article>
       ${S.order.length > 1 ? `<button class="linkbtn" type="button" id="showall">See all ${S.order.length} options</button>` : ""}
     </section>`;
   renderCard(m.place_id);
+  c.scrollTop = 0;
+  const qr = c.querySelector(".pickqr"); if (qr) qr.scrollIntoView({ block: "nearest" });   // the QR code must be on screen
   const all = $("showall"); if (all) all.onclick = () => { S.showAll = true; renderList(); redrawPins(); };
 }
 const AGENT_IDLE = { concierge: "Listening", scout: "Waiting", navigator: "Waiting" };
@@ -423,7 +444,7 @@ async function start() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws`);
   ws.binaryType = "arraybuffer"; S.ws = ws;
-  ws.onopen = () => ws.send(JSON.stringify(Object.assign({ type: "start", mode: S.mode }, where || {})));
+  ws.onopen = () => ws.send(JSON.stringify(Object.assign({ type: "start", mode: S.mode, tz_offset_min: TZ }, where || {})));
   ws.onmessage = (e) => { if (e.data instanceof ArrayBuffer) play(e.data); else handle(JSON.parse(e.data)); };
   ws.onclose = () => { $("state").textContent = "Stopped. Press Start to go again."; $("orb").classList.remove("on"); reset(); };
   ws.onerror = () => toast("Lost the connection to the server.");
