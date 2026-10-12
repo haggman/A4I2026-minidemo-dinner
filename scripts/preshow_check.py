@@ -178,15 +178,34 @@ async def check_flash(tries: int = 3) -> None:
 
 
 # ---- 6. the show, end to end ----------------------------------------------------------------------------------
+GENERIC = set("""the a an and of local kitchen restaurant restaurante ristorante trattoria bar grill grille cafe caffe
+bistro brasserie eatery tavern pub diner house steakhouse pizzeria pizza sushi ramen noodle noodles burger burgers
+coffee bakery deli taqueria cantina italian thai indian chinese japanese mexican french greek korean vietnamese
+spanish american toronto atlanta sunnyvale new york city downtown street st avenue ave front king queen union
+public royal golden little big great good best original famous table garden market co company""".split())
+
+
 def norm(s: str) -> str:
     s = (s or "").lower().replace("+", " and ").replace("&", " and ")
     return " " + re.sub(r"[^\w]+", " ", s.replace("'", "").replace("’", "")).strip() + " "
 
 
+def name_keys(name: str) -> list[str]:
+    """What counts as saying a place's name out loud: the full name, the part before any " - ", "(", "|" or ",",
+    or its first two or more words ("Black+Blue" for "Black+Blue Toronto"), or a distinctive first word of five
+    letters or more ("Scaddabush"). One or two generic words ("local", "kitchen", city names) never count alone."""
+    main = re.sub(r"^the\s+", "", re.split(r"\s[-–|:(]|,", name or "")[0], flags=re.I)
+    words = norm(main).split()
+    keys = {norm(name), norm(main)}
+    keys |= {" " + " ".join(words[:k]) + " " for k in range(2, len(words))}
+    if words and len(words[0]) >= 5 and words[0] not in GENERIC:
+        keys.add(" " + words[0] + " ")
+    return [k for k in keys if len(k.strip()) >= 4 and (len(k.split()) >= 3 or not set(k.split()) <= GENERIC)]
+
+
 def named(text: str, name: str) -> bool:
-    main = re.split(r"\s[-–|:(]|,", name or "")[0]
-    main = re.sub(r"^the\s+", "", main, flags=re.I)
-    return any(len(k.strip()) >= 4 and k in norm(text) for k in (norm(name), norm(main)))
+    t = norm(text)
+    return any(k in t for k in name_keys(name))
 
 
 async def check_show(lm: dict, port: int = 8097) -> None:

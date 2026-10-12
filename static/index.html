@@ -388,9 +388,20 @@ function caption(who, text, final) {
 // The cards and pins the voice names light up, so what she says and what's on screen visibly match.
 const NUM_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
 function norm(s) { return " " + String(s || "").toLowerCase().replace(/[+&]/g, " and ").replace(/[’'`]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim() + " "; }
+const GENERIC = new Set(`the a an and of local kitchen restaurant restaurante ristorante trattoria bar grill grille cafe caffe
+bistro brasserie eatery tavern pub diner house steakhouse pizzeria pizza sushi ramen noodle noodles burger burgers
+coffee bakery deli taqueria cantina italian thai indian chinese japanese mexican french greek korean vietnamese
+spanish american toronto atlanta sunnyvale new york city downtown street st avenue ave front king queen union
+public royal golden little big great good best original famous table garden market co company`.split(/\s+/));
 function nameKeys(name) {
+  // Saying a place's name: the full name, the part before " - ", "(", "|" or ",", its first two or more words
+  // ("Black+Blue" for "Black+Blue Toronto"), or a distinctive first word of five letters or more ("Scaddabush").
   const main = String(name || "").split(/\s[-–|:(]|,/)[0].replace(/^the\s+/i, "");
-  return [norm(name), norm(main)].filter(k => k.trim().length >= 4);
+  const words = norm(main).trim().split(" ").filter(Boolean);
+  const keys = new Set([norm(name), norm(main)]);
+  for (let k = 2; k < words.length; k++) keys.add(" " + words.slice(0, k).join(" ") + " ");
+  if (words.length && words[0].length >= 5 && !GENERIC.has(words[0])) keys.add(" " + words[0] + " ");
+  return [...keys].filter(k => { const w = k.trim().split(" "); return k.trim().length >= 4 && (w.length >= 3 || !w.every(x => GENERIC.has(x))); });
 }
 function spotlight(text) {
   if (!S.order.length) return;

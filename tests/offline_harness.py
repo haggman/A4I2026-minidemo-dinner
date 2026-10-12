@@ -434,6 +434,17 @@ async def main() -> int:
           got == {"#2": "b", "number two": "b", "3": "c", "first one": "a", "frederick": "b", "edna + vita union": "c", "Pai": "a"}, str(got))
     st.close()
 
+    # Spoken = screen: a real run (2026-10-12) said "Black+Blue" and "Scaddabush" for cards 1 and 2, whose full names
+    # are longer. The pre-show check (and the page's highlight, same rules) must count those, and not count "local".
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    import preshow_check as pc
+    said = ("There's Black+Blue, an upscale steakhouse, or Scaddabush, which has fresh pastas. A cozy local spot, "
+            "with a great kitchen.")
+    cards = ["Black+Blue Toronto", "Scaddabush Italian Kitchen & Bar Front Street", "LOCAL Public Eatery Adelaide",
+             "Blu Ristorante Toronto"]
+    got = [pc.named(said, n) for n in cards]
+    check("spoken names match cards by their short names, not by generic words", got == [True, True, False, False], str(got))
+
     # No location from the browser (refused or slow): the page starts on the default city's landmark.
     async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws", max_size=None) as ws2:
         await ws2.send(json.dumps({"type": "start", "mode": "hold"}))
