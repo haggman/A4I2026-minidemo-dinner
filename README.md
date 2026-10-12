@@ -12,8 +12,9 @@ Behind it is a small team of agents built with the Agent Development Kit (ADK):
 - **Scout** (Gemini 3.8 Flash + the Places API): finds restaurants near you; the cards and pins appear as it works.
 - **Navigator** (Gemini 3.8 Flash + Google Maps links): turns your pick into directions and a QR code.
 
-> **Status (2026-10-09): built, not yet run against Google.** The agents, the server and the page are done and
-> pass the offline harness (34/34). Next: a real conversation in Cloud Shell, then the rehearsal kit.
+> **Status (2026-10-12): built and run against Google; rehearsal kit and run-of-show written.** Presenting it?
+> Start with **[STAGE.md](STAGE.md)** (the one-pager) and **[run-of-show/](run-of-show/)** (the teleprompter
+> and planning guide).
 
 ## Run it in Cloud Shell
 
@@ -26,19 +27,19 @@ gcloud config set project YOUR_PROJECT_ID
 git clone https://github.com/haggman/A4I2026-minidemo-dinner.git && cd A4I2026-minidemo-dinner
 bash scripts/make_places_key.sh     # Vertex AI, Places API (New), Routes API; the server's key
 bash scripts/make_map_key.sh        # Maps JavaScript API; the page's key
-source scripts/activate.sh
-bash scripts/run.sh
+bash scripts/start_demo.sh          # the pre-show check (about a minute), then the page on port 8080
 ```
 
-Then **Web Preview > Preview on port 8080**, press **Start**, allow the location and the microphone, and talk. The
+Then click the `http://0.0.0.0:8080` link it prints (it opens in Web Preview), press **Start**, allow the location and the microphone, and talk. The
 search starts where the browser is (on stage, the venue); if the location is refused it starts at the city in
 `demo.env`, and you can always just say where you are. Use a headset or a
 handheld mic: speakers feeding the mic make the voice interrupt itself. If the room fights back, tick **Hold to
 talk** before Start and hold the button while you speak. The box at the bottom takes typed turns as a rehearsal
-backup, and **First word** shows how long the voice took to start answering.
+backup, **First word** shows how long the voice took to start answering, and **Record** saves a video of the
+tab with both voices (the fallback for the day; see STAGE.md).
 
-On a laptop instead: the same commands in a terminal (after `gcloud auth application-default login`), then open
-http://localhost:8080.
+`bash scripts/run.sh` starts the page alone, in the foreground, without the check. On a laptop instead: the same
+commands in a terminal (after `gcloud auth application-default login`), then open http://localhost:8080.
 
 ## What's here
 
@@ -49,6 +50,10 @@ http://localhost:8080.
 | `dinner_scout/routes.py` | Real walking and driving times (Routes API route matrix), one call per search |
 | `dinner_scout/server.py` | FastAPI + WebSocket relay between the page and the live session |
 | `static/index.html` | The page: map, voice, who's working, cards, QR code |
+| `STAGE.md` | The one-pager for presenting it: setup, morning of, if it goes wrong, recording the fallback |
+| `run-of-show/` | The teleprompter and planning guide (Word and Markdown), built from `run-of-show/src/content.js` |
+| `scripts/start_demo.sh` | The start block: the pre-show check, then the page in the background (`--stop` stops it) |
+| `scripts/preshow_check.py` | Settings, Places, Routes, the Live voice, Flash, and a full typed conversation; ends GO or NO-GO |
 | `demo.env` | Settings you might change (models, Vertex location, landmarks per city, walking pace) |
 | `tests/offline_harness.py` | Scripted stand-ins for Gemini and Places drive the real server; no Google calls |
 | `tests/serve_offline.py` | The page with those stand-ins, for trying the layout without keys |

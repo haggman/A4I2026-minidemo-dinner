@@ -146,6 +146,10 @@ button, input, select { font: inherit; color: inherit; }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .sources { width: 100%; font-size: .78rem; }
 .sources a { color: var(--muted); margin-right: 10px; }
+.btn.rec.on { background: var(--bad); border-color: var(--bad); color: #fff; }
+.btn.rec.on::before { content: "● "; }
+.btn.small { padding: 5px 10px; font-size: .85rem; }
+.toast.ok { background: #12301f; border-color: var(--scout); color: #d6ffe9; }
 .toast { position: fixed; right: 16px; bottom: 16px; max-width: 420px; background: #3a1712; border: 1px solid var(--bad); color: #ffd6cf; padding: 10px 14px; border-radius: 10px; z-index: 9; }
 .pin { background: var(--scout); color: #032019; font: 800 14px var(--display); width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
   border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
@@ -184,6 +188,7 @@ button, input, select { font: inherit; color: inherit; }
     <div class="foot">
       <label><input type="checkbox" id="holdmode"> Hold to talk</label>
       <span>First word <span class="mono" id="lat">–</span></span>
+      <button class="btn small rec" id="rec" type="button" title="Record this tab with both voices, for the fallback video">Record</button>
       <form id="typed"><input type="text" id="typedtext" placeholder="Type instead (rehearsal backup)" aria-label="Type a message"><button class="btn" type="submit">Send</button></form>
       <div class="sources" id="sources"></div>
     </div>
@@ -198,7 +203,7 @@ const S = { ws: null, cfg: null, mode: "auto", inCtx: null, outCtx: null, outGai
   playing: [], nextTime: 0, holding: false, places: {}, order: [], said: new Set(), markers: {}, here: null, map: null, gm: null,
   cap: { user: null, agent: null } };
 
-function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 6000); }
+function toast(msg, ok) { const t = $("toast"); t.textContent = msg; t.className = "toast" + (ok ? " ok" : ""); t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 6000); }
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
 // ---------------------------------------------------------------- config and map
@@ -419,10 +424,19 @@ class Mic extends AudioWorkletProcessor {
 }
 registerProcessor("mic", Mic);`;
 
+function ensureOut() {
+  // The voice's output, kept for the whole page: it also feeds the recorder (recDest), so a recording can run
+  // across Stop and Start.
+  if (!S.outCtx) {
+    S.outCtx = new AudioContext({ sampleRate: 24000 });
+    S.outGain = S.outCtx.createGain(); S.outAnalyser = S.outCtx.createAnalyser(); S.outAnalyser.fftSize = 512;
+    S.outGain.connect(S.outAnalyser); S.outAnalyser.connect(S.outCtx.destination);
+    S.recDest = S.outCtx.createMediaStreamDestination(); S.outGain.connect(S.recDest);
+  }
+  if (S.outCtx.state === "suspended") S.outCtx.resume();
+}
 async function startAudio() {
-  S.outCtx = new AudioContext({ sampleRate: 24000 });
-  S.outGain = S.outCtx.createGain(); S.outAnalyser = S.outCtx.createAnalyser(); S.outAnalyser.fftSize = 512;
-  S.outGain.connect(S.outAnalyser); S.outAnalyser.connect(S.outCtx.destination);
+  ensureOut();
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
   S.inCtx = new AudioContext();
   await S.inCtx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })));
@@ -436,6 +450,8 @@ async function startAudio() {
     S.ws.send(e.data);
   };
   S.stream = stream;
+  try { S.micToRec = S.outCtx.createMediaStreamSource(stream); S.micToRec.connect(S.recDest); }   // your voice, for a recording
+  catch (e) { S.micToRec = null; console.warn("A recording will carry only the Concierge's voice:", e); }
   requestAnimationFrame(meter);
 }
 function play(buf) {
@@ -459,6 +475,7 @@ function meter() {
 async function start() {
   $("start").disabled = true;
   S.mode = $("holdmode").checked ? "hold" : "auto";
+  ensureOut();
   try { await startAudio(); } catch (e) { toast("Microphone: " + e.message + ". You can still type below."); }
   const where = S.where || await whereAmI();
   if (where) S.where = where;
@@ -472,7 +489,7 @@ async function start() {
   ws.onerror = () => toast("Lost the connection to the server.");
   $("start").hidden = true; $("stop").hidden = false;
   $("hold").classList.toggle("show", S.mode === "hold");
-  if (!S.outCtx) $("state").textContent = "Connecting…";
+  if (!S.stream) $("state").textContent = "Connecting…";
 }
 function whereAmI() {
   // The browser's own location (the venue's, on stage). Needs the page's permission; null if refused or slow.
@@ -486,14 +503,45 @@ function whereAmI() {
 function reset() {
   flush(); S.ws = null;
   if (S.stream) S.stream.getTracks().forEach(t => t.stop());
-  [S.inCtx, S.outCtx].forEach(c => { try { c && c.close(); } catch (e) {} });
-  S.inCtx = S.outCtx = null;
+  if (S.micToRec) { try { S.micToRec.disconnect(); } catch (e) {} S.micToRec = null; }
+  try { S.inCtx && S.inCtx.close(); } catch (e) {}
+  S.inCtx = null;
   $("start").hidden = false; $("start").disabled = false; $("stop").hidden = true; $("hold").classList.remove("show");
 }
 function stop() { if (S.ws) { try { S.ws.send(JSON.stringify({ type: "stop" })); } catch (e) {} S.ws.close(); } }
 function holdDown(e) { e.preventDefault(); if (!S.ws || S.holding) return; S.holding = true; flush(); $("hold").classList.add("down"); S.ws.send(JSON.stringify({ type: "activity_start" })); }
 function holdUp(e) { if (!S.holding) return; S.holding = false; $("hold").classList.remove("down"); if (S.ws) S.ws.send(JSON.stringify({ type: "activity_end" })); }
 
+// ---------------------------------------------------------------- the fallback video
+// Record this tab with both voices (yours from the mic, the Concierge's from the page) and save it as a video file
+// in Downloads. Made in rehearsal; played from the laptop if the wifi fails on the day (STAGE.md).
+async function toggleRecord() {
+  if (S.rec) { S.rec.stop(); return; }
+  ensureOut();
+  let display;
+  try {
+    display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false,
+      preferCurrentTab: true, selfBrowserSurface: "include", surfaceSwitching: "exclude" });
+  } catch (e) { toast("To record, choose this tab when the browser asks what to share. (" + e.message + ")"); return; }
+  const mime = ["video/mp4;codecs=avc1,mp4a.40.2", "video/webm;codecs=vp9,opus", "video/webm"]
+    .find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "";
+  const rec = new MediaRecorder(new MediaStream([...display.getVideoTracks(), ...S.recDest.stream.getAudioTracks()]),
+    mime ? { mimeType: mime, videoBitsPerSecond: 6000000 } : {});
+  const chunks = [], stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+  rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  rec.onstop = () => {
+    display.getTracks().forEach(t => t.stop());
+    const type = rec.mimeType || mime || "video/webm", ext = type.includes("mp4") ? "mp4" : "webm";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(chunks, { type })); a.download = `dinner-scout-${stamp}.${ext}`; a.click();
+    S.rec = null; $("rec").classList.remove("on"); $("rec").textContent = "Record";
+    toast(`Saved ${a.download} to your Downloads folder.`, true);
+  };
+  display.getVideoTracks()[0].addEventListener("ended", () => { if (S.rec) S.rec.stop(); });   // "Stop sharing"
+  rec.start(1000);
+  S.rec = rec; $("rec").classList.add("on"); $("rec").textContent = "Stop recording";
+}
+$("rec").addEventListener("click", toggleRecord);
 $("start").addEventListener("click", start);
 $("stop").addEventListener("click", stop);
 $("hold").addEventListener("pointerdown", holdDown);

@@ -1,0 +1,7 @@
+{
+  "name": "demo-pack",
+  "private": true,
+  "description": "Generators for this pack's teleprompter and planning guide, see src/build.sh",
+  "scripts": { "build": "bash src/build.sh" },
+  "dependencies": { "docx": "9.6.1" }
+}

@@ -209,7 +209,7 @@ class FakeLive(BaseLlmConnection):
         elif "drive" in text:
             self.next_note = "drive"
             self.push(call("note_preferences", travel="drive", max_minutes=10), DONE)
-        elif "Edna" in text:
+        elif "Edna" in text or "number one" in text:
             self.push(audio("Great choice. Let me get you directions."), call("navigator", request="Edna + Vita"), DONE)
         elif "interrupt" in text:
             self.push(audio("Let me tell you all about"), LlmResponse(interrupted=True))
