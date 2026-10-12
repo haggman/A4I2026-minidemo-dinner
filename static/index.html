@@ -499,6 +499,7 @@ async function start() {
   ws.onclose = () => { $("state").textContent = "Stopped. Press Start to go again."; $("orb").classList.remove("on"); reset(); };
   ws.onerror = () => toast("Lost the connection to the server.");
   $("start").hidden = true; $("stop").hidden = false;
+  if (!S.rec) { $("rec").disabled = true; $("rec").title = "Press Stop first: a recording starts before Start"; }
   $("hold").classList.toggle("show", S.mode === "hold");
   if (!S.stream) $("state").textContent = "Connecting…";
 }
@@ -518,6 +519,7 @@ function reset() {
   try { S.inCtx && S.inCtx.close(); } catch (e) {}
   S.inCtx = null;
   $("start").hidden = false; $("start").disabled = false; $("stop").hidden = true; $("hold").classList.remove("show");
+  $("rec").disabled = false; $("rec").title = "Record this tab with both voices, for the fallback video";
 }
 function stop() { if (S.ws) { try { S.ws.send(JSON.stringify({ type: "stop" })); } catch (e) {} S.ws.close(); } }
 function holdDown(e) { e.preventDefault(); if (!S.ws || S.holding) return; S.holding = true; flush(); $("hold").classList.add("down"); S.ws.send(JSON.stringify({ type: "activity_start" })); }
@@ -528,12 +530,27 @@ function holdUp(e) { if (!S.holding) return; S.holding = false; $("hold").classL
 // in Downloads. Made in rehearsal; played from the laptop if the wifi fails on the day (STAGE.md).
 async function toggleRecord() {
   if (S.rec) { S.rec.stop(); return; }
+  if (S.ws) { toast("Press Stop, then Record, then Start: a recording has to begin before the conversation."); return; }
   ensureOut();
   let display;
   try {
     display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false,
       preferCurrentTab: true, selfBrowserSurface: "include", surfaceSwitching: "exclude" });
   } catch (e) { toast("To record, choose this tab when the browser asks what to share. (" + e.message + ")"); return; }
+  // Watch the picture: start the recorder only once the first frame has arrived, and count frames, so a recording
+  // with sound but no picture (seen in the 2026-10-12 run-through) is caught here instead of on the day.
+  const v = document.createElement("video");
+  v.muted = true; v.playsInline = true; v.srcObject = display;
+  v.style.cssText = "position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:0;pointer-events:none";
+  document.body.appendChild(v);
+  try { await v.play(); } catch (e) {}
+  let frames = 0;
+  const watch = !!v.requestVideoFrameCallback;
+  if (watch) {
+    const tick = () => { frames++; if (v.isConnected) v.requestVideoFrameCallback(tick); };
+    v.requestVideoFrameCallback(tick);
+    for (let i = 0; i < 30 && frames === 0; i++) await new Promise(r => setTimeout(r, 100));   // up to 3 s
+  }
   const mime = ["video/mp4;codecs=avc1,mp4a.40.2", "video/webm;codecs=vp9,opus", "video/webm"]
     .find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "";
   const rec = new MediaRecorder(new MediaStream([...display.getVideoTracks(), ...S.recDest.stream.getAudioTracks()]),
@@ -541,12 +558,13 @@ async function toggleRecord() {
   const chunks = [], stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
   rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   rec.onstop = () => {
-    display.getTracks().forEach(t => t.stop());
+    display.getTracks().forEach(t => t.stop()); v.remove();
     const type = rec.mimeType || mime || "video/webm", ext = type.includes("mp4") ? "mp4" : "webm";
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob(chunks, { type })); a.download = `dinner-scout-${stamp}.${ext}`; a.click();
-    S.rec = null; $("rec").classList.remove("on"); $("rec").textContent = "Record";
-    toast(`Saved ${a.download} to your Downloads folder.`, true);
+    S.rec = null; $("rec").classList.remove("on"); $("rec").textContent = "Record"; $("rec").disabled = !!S.ws;
+    if (watch && frames < 2) toast(`Saved ${a.download}, but it has no picture. Record again: Stop, then Record, choose this tab, then Start.`);
+    else toast(`Saved ${a.download} to your Downloads folder.`, true);
   };
   display.getVideoTracks()[0].addEventListener("ended", () => { if (S.rec) S.rec.stop(); });   // "Stop sharing"
   rec.start(1000);

@@ -65,7 +65,7 @@ bash scripts/make_places_key.sh && bash scripts/make_map_key.sh
 bash scripts/start_demo.sh
 ```
 
-→ *make_places_key.sh enables Vertex AI, Places API (New) and Routes API and writes MAPS_SERVER_KEY to keys.env. make_map_key.sh writes MAPS_BROWSER_KEY. The pre-show check ends GO; then Ready and http://0.0.0.0:8080.*
+→ *make_places_key.sh enables Agent Platform, Places API (New) and Routes API and writes MAPS_SERVER_KEY to keys.env. make_map_key.sh writes MAPS_BROWSER_KEY. The pre-show check ends GO; then Ready and http://0.0.0.0:8080.*
 
 ### Record the fallback video
 
@@ -144,25 +144,21 @@ Start
 
 Hi! I'm here in [THIS CITY] doing an event for Google. It's coming up on dinner time and I'm looking for something to eat.
 
-→ *First word in about 2 seconds. She asks: around here, or somewhere else?*
-
-**SPEAK to Dinner Scout**
-
-Around here.
-
-→ *She asks: walk or drive, and how far?*
+→ *First word in about 2 seconds. She asks: walk or drive, and how far? (Or first: around here, or somewhere else? Say "Around here.")*
 
 **SPEAK to Dinner Scout**
 
 I'll walk. Fifteen minutes, tops.
 
-→ *"Let me send my scout…" · Scout lights up · the strip says on foot · up to 15 min · she asks what you're in the mood for.*
+→ *The strip says on foot · up to 15 min. She sends the Scout, or first asks what you're in the mood for.*
 
 **SPEAK to Dinner Scout**
 
 Surprise me. Something good.
 
-→ *Cards and numbered pins appear. She names #1 and #2, and those two cards light up green.*
+→ *Scout lights up · cards and numbered pins appear · she names two of them, and those cards light up green.*
+
+In the 2026-10-12 run-through, naming the city in the first line ("I'm here in Toronto") counted as answering "around here or somewhere else": she went straight to walk or drive. She asked about food before searching in one run of three. If you ask for good ratings, she picks the best-rated cards, not #1 and #2.
 
 Her first question is "around here, or somewhere else?" because people plan ahead: "I'll be in Toronto next week" moves the map and the search there (the optional page shows it). "Around here" keeps the venue, which the browser's location supplied.
 
@@ -345,7 +341,7 @@ Talk over it beat by beat: the first ask, the interruption, the wheelchair quest
 
 ### Models and where they run
 
-- Concierge: gemini-3.8-live on Vertex AI, served from the us multi-region (it isn't served from global). Voice: Kore. No Gemini key: Cloud Shell's own credentials.
+- Concierge: gemini-3.8-live on Google Cloud's Gemini Enterprise Agent Platform, served from the us multi-region (it isn't served from global). Voice: Kore. No Gemini key: Cloud Shell's own credentials.
 - Scout and Navigator: gemini-3.8-flash at global, thinking LOW (gemini-3.8-flash rejects MINIMAL).
 - Built with ADK 2.7.0: the specialists are AgentTools scheduled WHEN_IDLE, so they run in the background while she keeps talking.
 

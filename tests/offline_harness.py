@@ -17,7 +17,7 @@ import sys
 import time
 from pathlib import Path
 
-os.environ.update(GOOGLE_CLOUD_PROJECT="offline-proj", MAPS_SERVER_KEY="offline-key", A4I_BACKEND="vertex")
+os.environ.update(GOOGLE_CLOUD_PROJECT="offline-proj", MAPS_SERVER_KEY="offline-key", A4I_BACKEND="agent-platform")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from google.adk.models import Gemini  # noqa: E402

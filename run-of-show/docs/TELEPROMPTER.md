@@ -115,25 +115,19 @@ Start
 
 Hi! I'm here in [THIS CITY] doing an event for Google. It's coming up on dinner time and I'm looking for something to eat.
 
-→ *First word in about 2 seconds. She asks: around here, or somewhere else?*
-
-**SPEAK to Dinner Scout**
-
-Around here.
-
-→ *She asks: walk or drive, and how far?*
+→ *First word in about 2 seconds. She asks: walk or drive, and how far? (Or first: around here, or somewhere else? Say "Around here.")*
 
 **SPEAK to Dinner Scout**
 
 I'll walk. Fifteen minutes, tops.
 
-→ *"Let me send my scout…" · Scout lights up · the strip says on foot · up to 15 min · she asks what you're in the mood for.*
+→ *The strip says on foot · up to 15 min. She sends the Scout, or first asks what you're in the mood for.*
 
 **SPEAK to Dinner Scout**
 
 Surprise me. Something good.
 
-→ *Cards and numbered pins appear. She names #1 and #2, and those two cards light up green.*
+→ *Scout lights up · cards and numbered pins appear · she names two of them, and those cards light up green.*
 
 > **If it goes wrong:** She asks where you are: "Right here at the venue." · Silent over 8 s: "Are you still there?" · She interrupts herself: Stop ▸ tick Hold to talk ▸ Start ▸ hold the button while you speak.
 

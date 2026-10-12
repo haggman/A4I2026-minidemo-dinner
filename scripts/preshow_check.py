@@ -142,7 +142,7 @@ async def check_live() -> None:
         try:
             conn, fa, _ = await live_once()
             g = grade(fa, LIVE_FIRST_AUDIO)
-            rec(g, "Live voice", f"{config.LIVE_MODEL} at {config.VERTEX_LOCATION if config.BACKEND == 'vertex' else 'gemini-api'}: "
+            rec(g, "Live voice", f"{config.LIVE_MODEL} at {config.LIVE_LOCATION if config.ON_AGENT_PLATFORM else 'gemini-api'}: "
                 f"connect {conn:.2f}s, first audio {fa:.2f}s" if fa is not None else "connected but no audio came back")
             return
         except Exception as e:
@@ -336,7 +336,7 @@ def verdict(started: str, t0: float, city: str) -> int:
         word = "GO: everything answered, and quickly"
     print("\n" + "=" * 26 + " DINNER SCOUT PRE-SHOW CHECK — paste from here " + "=" * 26)
     print(f"{started} · {city} · {time.perf_counter() - t0:.0f}s · project {config.PROJECT or '-'} · "
-          f"{config.LIVE_MODEL} @ {config.VERTEX_LOCATION} · {config.TEXT_MODEL} {config.SPECIALIST_THINKING}")
+          f"{config.LIVE_MODEL} @ {config.LIVE_LOCATION} · {config.TEXT_MODEL} {config.SPECIALIST_THINKING}")
     for status, what, msg in RESULTS:
         print(f"[{status}] {what}: {msg}")
     print(word)

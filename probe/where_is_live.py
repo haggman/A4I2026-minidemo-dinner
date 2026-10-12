@@ -1,4 +1,4 @@
-"""Which Vertex AI locations will open a Live session on the Live model for this project? (About 30 seconds.)
+"""Which Agent Platform locations will open a Live session on the Live model for this project? (About 30 seconds.)
 
     source scripts/activate.sh
     python probe/where_is_live.py                    # the usual candidates
@@ -6,7 +6,7 @@
 
 Each location gets one short Live session ("Say hello.") at the same time. A location that works prints OK and how
 long it took; the rest print Google's error. If a Gemini API key is in keys.env, that route is tried too.
-Then set A4I_VERTEX_LOCATION in demo.env to a location that said OK and run the full probe again.
+Then set A4I_LIVE_LOCATION in demo.env to a location that said OK and run the full probe again.
 
 Why: Google's locations table lists gemini-3.8-live under the multi-regions ("us", "eu", served from
 aiplatform.us.rep.googleapis.com and aiplatform.eu.rep.googleapis.com) as well as single regions. In a lab project
@@ -49,7 +49,7 @@ async def main() -> int:
     tries = []
     if config.PROJECT:
         for loc in locations:
-            tries.append(try_one(f"vertex {loc}", genai.Client(vertexai=True, project=config.PROJECT, location=loc)))
+            tries.append(try_one(f"agent-platform {loc}", genai.Client(vertexai=True, project=config.PROJECT, location=loc)))
     else:
         print("No project: run gcloud config set project ..., then source scripts/activate.sh")
     if config.GEMINI_API_KEY:
@@ -62,10 +62,10 @@ async def main() -> int:
     print("=" * 20 + " to here " + "=" * 20)
     good = [label for label, ok, _ in results if ok]
     if good:
-        print(f"\nWorks: {', '.join(good)}. For Vertex, set A4I_VERTEX_LOCATION in demo.env to one of those "
+        print(f"\nWorks: {', '.join(good)}. For Agent Platform, set A4I_LIVE_LOCATION in demo.env to one of those "
               "(prefer 'us' or a US region), then: python probe/probe.py")
     else:
-        print("\nNowhere on Vertex for this project. Next: a Gemini API key in keys.env "
+        print("\nNowhere on Agent Platform for this project. Next: a Gemini API key in keys.env "
               "(GOOGLE_API_KEY) and A4I_BACKEND=gemini-api in demo.env.")
     return 0 if good else 1
 

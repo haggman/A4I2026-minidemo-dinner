@@ -52,4 +52,4 @@ if not done:
     lines.append("MAPS_BROWSER_KEY=" + sys.argv[1])
 p.write_text("\n".join(lines) + "\n")
 PY
-echo "Wrote MAPS_BROWSER_KEY to keys.env. New keys can take a few minutes to work. Next: bash scripts/run.sh"
+echo "Wrote MAPS_BROWSER_KEY to keys.env. New keys can take a few minutes to work. Next: bash scripts/start_demo.sh"

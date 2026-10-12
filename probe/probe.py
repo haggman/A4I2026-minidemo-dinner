@@ -9,16 +9,16 @@ and saves each spoken reply as a .wav in probe/out/ so you can hear the voice.
 
 What it settles (numbered as in the output):
   P1  Places API (New): the landmark, then dinner around it, and which fields actually come back filled in.
-  P2  Gemini Live, no ADK, on the backend in demo.env (Vertex by default, no key): connect time, time to first
+  P2  Gemini Live, no ADK, on the backend in demo.env (Agent Platform by default, no key): connect time, time to first
       audio, how fast audio is generated.
   P3  Google Search and our own function tool in ONE Live session: allowed or rejected?
   P4  The specialists alone (ADK, text model): the Scout with our Places tool, the Vetter with Google Search.
   P5  The team, live (ADK run_live): Concierge on the Live model, Scout and Vetter as AgentTools.
       Does the specialist run? Does the voice keep talking while it works? Then a SPOKEN interruption
       (a synthesized voice says "no chains") to see the interrupted flag, the transcription and the recovery.
-  P6  Which backends will serve the Live model to us: Vertex regional, Vertex global, the Gemini API (if a key).
+  P6  Which backends will serve the Live model to us: Agent Platform regional, Agent Platform global, the Gemini API (if a key).
 
-Patrick runs this, in Cloud Shell by default (Gemini on Vertex, no key; a Places key in keys.env); Claude cannot
+Patrick runs this, in Cloud Shell by default (Gemini on Agent Platform, no key; a Places key in keys.env); Claude cannot
 reach Gemini or Maps from its sandbox.
 """
 import argparse
@@ -101,8 +101,8 @@ def resample_16k(pcm: bytes, rate: int) -> bytes:
 
 
 def where() -> str:
-    if config.BACKEND == "vertex":
-        return f"Vertex AI ({config.PROJECT}, {config.VERTEX_LOCATION})"
+    if config.ON_AGENT_PLATFORM:
+        return f"Agent Platform ({config.PROJECT}, {config.LIVE_LOCATION})"
     return "the Gemini API (key)"
 
 
@@ -615,16 +615,16 @@ async def p5_team_live() -> None:
 async def p6_backends() -> None:
     tries = []
     if config.PROJECT:
-        tries += [(f"vertex {config.VERTEX_LOCATION}", dict(vertexai=True, project=config.PROJECT,
-                                                         location=config.VERTEX_LOCATION)),
-                  ("vertex us-central1", dict(vertexai=True, project=config.PROJECT, location="us-central1")),
-                  ("vertex global", dict(vertexai=True, project=config.PROJECT, location="global"))]
+        tries += [(f"agent-platform {config.LIVE_LOCATION}", dict(vertexai=True, project=config.PROJECT,
+                                                         location=config.LIVE_LOCATION)),
+                  ("agent-platform us-central1", dict(vertexai=True, project=config.PROJECT, location="us-central1")),
+                  ("agent-platform global", dict(vertexai=True, project=config.PROJECT, location="global"))]
     else:
-        rec("SKIP", "P6 vertex", "no Google Cloud project (gcloud config set project ..., then source activate.sh)")
+        rec("SKIP", "P6 agent-platform", "no Google Cloud project (gcloud config set project ..., then source activate.sh)")
     if config.GEMINI_API_KEY:
         tries.append(("gemini-api", dict(vertexai=False, api_key=config.GEMINI_API_KEY)))
     else:
-        rec("SKIP", "P6 gemini-api", "no GOOGLE_API_KEY (optional: only needed if Vertex won't serve the Live model)")
+        rec("SKIP", "P6 gemini-api", "no GOOGLE_API_KEY (optional: only needed if Agent Platform won't serve the Live model)")
     for label, kw in tries:
         try:
             client = genai.Client(**kw)

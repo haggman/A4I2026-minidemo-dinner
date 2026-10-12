@@ -75,6 +75,10 @@ In rehearsal, after a GO:
 4. Play it back in Chrome (File ▸ Open File…) before you trust it. Keep the best one in a folder you'll find on
    the day, and copy it to a USB stick.
 
+Record only before **Start**: in the 2026-10-12 run-through, recordings started mid-conversation saved sound
+with no picture. The button is greyed out during a conversation, and the page tells you if a recording has no
+picture.
+
 One good recording works in every city ("here's one from rehearsal"). Make a new one if you change the demo.
 
 ## After the show

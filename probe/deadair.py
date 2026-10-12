@@ -272,7 +272,7 @@ async def live_try(label: str, instruction: str, text: str, *, own_search=False,
         end = (marks.get(f"{waits_for} end") or [None])[-1]
         return end is not None and any(a > end for a in audio) and any(c > end for c in completes)
 
-    deadline = time.perf_counter() + 60
+    deadline = time.perf_counter() + 40
     while time.perf_counter() < deadline and not finished():
         await asyncio.sleep(0.1)
     q.close()
@@ -320,7 +320,7 @@ async def main() -> int:
     if not ok or not config.MAPS_SERVER_KEY:
         print(why or "MAPS_SERVER_KEY is empty")
         return 1
-    print(f"Dead-air probe, round 2 · live {config.LIVE_MODEL} ({config.BACKEND} {config.VERTEX_LOCATION}) · "
+    print(f"Dead-air probe, round 2 · live {config.LIVE_MODEL} ({config.BACKEND} {config.LIVE_LOCATION}) · "
           f"specialists {config.TEXT_MODEL} · about 4 minutes\n")
     t = time.perf_counter()
     await locate()
@@ -340,7 +340,7 @@ async def main() -> int:
     await live_try("L6 chain question, own Search", BASE + OWN_SEARCH, vet, own_search=True, waits_for="speech")
 
     print("\n" + "=" * 26 + " DEAD AIR — paste from here " + "=" * 26)
-    print(f"deadair · {time.perf_counter() - t:.0f}s · live {config.VERTEX_LOCATION}")
+    print(f"deadair · {time.perf_counter() - t:.0f}s · live {config.LIVE_LOCATION}")
     for line in LINES:
         print(line)
     for label, tl in TIMELINES.items():

@@ -57,18 +57,18 @@ const blocks = [
     { tag: "SAY", text: "Every one of us has stood in a strange city at seven o'clock, thumbing through Google Maps. Let's just ask." },
     { tag: "DO", text: "Start", expect: "Listening. Just talk." },
     { tag: "SPEAK", text: "Hi! I'm here in [THIS CITY] doing an event for Google. It's coming up on dinner time and I'm looking for something to eat.",
-      expect: "First word in about 2 seconds. She asks: around here, or somewhere else?" },
-    { tag: "SPEAK", text: "Around here.", expect: "She asks: walk or drive, and how far?" },
+      expect: "First word in about 2 seconds. She asks: walk or drive, and how far? (Or first: around here, or somewhere else? Say \"Around here.\")" },
     { tag: "SPEAK", text: "I'll walk. Fifteen minutes, tops.",
-      expect: "\"Let me send my scout…\" · Scout lights up · the strip says on foot · up to 15 min · she asks what you're in the mood for." },
+      expect: "The strip says on foot · up to 15 min. She sends the Scout, or first asks what you're in the mood for." },
     { tag: "SPEAK", text: "Surprise me. Something good.",
-      expect: "Cards and numbered pins appear. She names #1 and #2, and those two cards light up green." },
+      expect: "Scout lights up · cards and numbered pins appear · she names two of them, and those cards light up green." },
   ],
   gotcha: "She asks where you are: \"Right here at the venue.\" · Silent over 8 s: \"Are you still there?\" · She interrupts herself: Stop ▸ tick Hold to talk ▸ Start ▸ hold the button while you speak.",
   why: "The whole demo in one line: a real spoken conversation, and the screen filling in with real places while she talks.",
   say: ["Every one of us has stood in a strange city at seven o'clock, thumbing through Google Maps. I do it every week. So let's just ask.",
         "(While the Scout works, point at the three panels.) She's the only one talking. Behind her, a Scout is searching Google Maps right now, and the cards are landing as it finds them."],
-  detail: ["Her first question is \"around here, or somewhere else?\" because people plan ahead: \"I'll be in Toronto next week\" moves the map and the search there (the optional page shows it). \"Around here\" keeps the venue, which the browser's location supplied.",
+  detail: ["In the 2026-10-12 run-through, naming the city in the first line (\"I'm here in Toronto\") counted as answering \"around here or somewhere else\": she went straight to walk or drive. She asked about food before searching in one run of three. If you ask for good ratings, she picks the best-rated cards, not #1 and #2.",
+           "Her first question is \"around here, or somewhere else?\" because people plan ahead: \"I'll be in Toronto next week\" moves the map and the search there (the optional page shows it). \"Around here\" keeps the venue, which the browser's location supplied.",
            "She says a sentence before she hands off to the Scout and keeps you company while it works; if she ever hands off in silence, the server nudges her to talk. Worst silence in the best probe run: 4.2 s."],
 },
 // ---------------------------------------------------------------------------------------------------------------- 2
@@ -195,7 +195,7 @@ const GUIDE = {
   setup: [
     { h2: "Once, the week before (your own project)" },
     { step: { tag: "SHELL", label: "CLOUD SHELL · about 5 minutes", text: "gcloud config set project YOUR_PROJECT_ID\ngit clone https://github.com/haggman/A4I2026-minidemo-dinner.git && cd A4I2026-minidemo-dinner\nbash scripts/make_places_key.sh && bash scripts/make_map_key.sh\nbash scripts/start_demo.sh",
-      expect: "make_places_key.sh enables Vertex AI, Places API (New) and Routes API and writes MAPS_SERVER_KEY to keys.env. make_map_key.sh writes MAPS_BROWSER_KEY. The pre-show check ends GO; then Ready and http://0.0.0.0:8080." } },
+      expect: "make_places_key.sh enables Agent Platform, Places API (New) and Routes API and writes MAPS_SERVER_KEY to keys.env. make_map_key.sh writes MAPS_BROWSER_KEY. The pre-show check ends GO; then Ready and http://0.0.0.0:8080." } },
     { h2: "Record the fallback video" },
     { numbered: [
       "Click http://0.0.0.0:8080 in Cloud Shell. Allow location.",
@@ -232,7 +232,7 @@ const GUIDE = {
   factSheet: [
     { h2: "Models and where they run" },
     { bullets: [
-      "Concierge: gemini-3.8-live on Vertex AI, served from the us multi-region (it isn't served from global). Voice: Kore. No Gemini key: Cloud Shell's own credentials.",
+      "Concierge: gemini-3.8-live on Google Cloud's Gemini Enterprise Agent Platform, served from the us multi-region (it isn't served from global). Voice: Kore. No Gemini key: Cloud Shell's own credentials.",
       "Scout and Navigator: gemini-3.8-flash at global, thinking LOW (gemini-3.8-flash rejects MINIMAL).",
       "Built with ADK 2.7.0: the specialists are AgentTools scheduled WHEN_IDLE, so they run in the background while she keeps talking.",
     ] },
