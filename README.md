@@ -89,6 +89,9 @@ Shell and localhost.
 
 ## A quick tour of the code
 
+For every file in the repo and a step-by-step walk through one conversation, from the mic to the QR code, see
+[CODE-TOUR.md](CODE-TOUR.md).
+
 If there's time for two minutes in the code, these are the pieces worth opening, in this order:
 
 1. **The team**: [`dinner_scout/agents.py`](dinner_scout/agents.py). `build_concierge()` at the bottom puts the
@@ -120,6 +123,7 @@ and `keys.env` (the two Maps keys, made by the scripts, never committed).
 
 | Path | What it is |
 |---|---|
+| `CODE-TOUR.md` | Every file, and how one conversation flows through the code |
 | `STAGE.md` | The one-pager for presenting it |
 | `run-of-show/` | The teleprompter and planning guide (Word and Markdown), built from `run-of-show/src/content.js`; rebuild with `cd run-of-show && npm install && bash src/build.sh` |
 | `scripts/start_demo.sh` | The start block: the pre-show check, then the page in the background (`--quick`, `--city Atlanta`, `--stop`) |
